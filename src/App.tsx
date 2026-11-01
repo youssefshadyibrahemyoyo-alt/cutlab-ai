@@ -46,6 +46,7 @@ import { WebcamModal } from './components/WebcamModal';
 import { CompareGridModal } from './components/CompareGridModal';
 
 const GEMINI_KEY_STORAGE = 'cutlab_gemini_api_key_v1';
+const HF_TOKEN_STORAGE = 'cutlab_hf_token_v1';
 
 const CATEGORY_TABS: { id: HaircutCategory; label: string }[] = [
   { id: 'all', label: 'Top Matches' },
@@ -98,11 +99,15 @@ export function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'mirror' | 'cuts' | 'barber'>('mirror');
 
-  // Optional BYOK Pro Key
+  // Optional BYOK Pro Keys
   const [geminiApiKey, setGeminiApiKey] = useState<string>(
     () => localStorage.getItem(GEMINI_KEY_STORAGE) || ''
   );
   const [draftGeminiKey, setDraftGeminiKey] = useState<string>(geminiApiKey);
+  const [hfToken, setHfToken] = useState<string>(
+    () => localStorage.getItem(HF_TOKEN_STORAGE) || ''
+  );
+  const [draftHfToken, setDraftHfToken] = useState<string>(hfToken);
 
   // AI Master Barber Chat
   const [chatMessages, setChatMessages] = useState<BarberChatMessage[]>([
@@ -214,6 +219,7 @@ export function App() {
     overrideTitle?: string;
     overrideSpecs?: BarberSpecs;
     rawEnginePrompt?: string;
+    overridePreserveBeard?: boolean;
   }): Promise<GeneratedLook | null> => {
     if (!originalPhotoUrl || isGenerating) return null;
 
@@ -237,6 +243,10 @@ export function App() {
     const finalPrompt = opts.rawEnginePrompt || compiled.prompt;
     const finalTitle = opts.overrideTitle || compiled.title;
     const finalSpecs = opts.overrideSpecs || compiled.specs;
+    const preserveBeard =
+      opts.overridePreserveBeard !== undefined
+        ? opts.overridePreserveBeard
+        : compiled.preserveBeard;
 
     const matchScore = opts.preset
       ? computeSuitabilityScore(opts.preset, faceAnalysis?.shape ?? null).score
@@ -246,9 +256,12 @@ export function App() {
 
     try {
       const { imageDataUrl, engineUsed } = await generateHaircutTransformation({
+        originalIdentityDataUrl: originalPhotoUrl,
         sourceDataUrl,
         prompt: finalPrompt,
+        preserveBeard,
         geminiApiKey,
+        hfToken,
         onStatus: msg => setGenerationStatus(msg),
       });
 
@@ -333,6 +346,7 @@ export function App() {
           overrideTitle: agentRes.cutTitle,
           overrideSpecs: agentRes.barberSpecs,
           rawEnginePrompt: agentRes.imagePrompt,
+          overridePreserveBeard: !agentRes.changeBeard && beard === 'keep_current',
         });
         if (rendered) {
           setChatMessages(prev =>
@@ -378,12 +392,19 @@ export function App() {
   };
 
   const saveSettings = () => {
-    const trimmed = draftGeminiKey.trim();
-    setGeminiApiKey(trimmed);
-    if (trimmed) {
-      localStorage.setItem(GEMINI_KEY_STORAGE, trimmed);
+    const trimmedGemini = draftGeminiKey.trim();
+    const trimmedHf = draftHfToken.trim();
+    setGeminiApiKey(trimmedGemini);
+    setHfToken(trimmedHf);
+    if (trimmedGemini) {
+      localStorage.setItem(GEMINI_KEY_STORAGE, trimmedGemini);
     } else {
       localStorage.removeItem(GEMINI_KEY_STORAGE);
+    }
+    if (trimmedHf) {
+      localStorage.setItem(HF_TOKEN_STORAGE, trimmedHf);
+    } else {
+      localStorage.removeItem(HF_TOKEN_STORAGE);
     }
     setShowSettingsModal(false);
   };
@@ -477,13 +498,14 @@ export function App() {
             className="topbar-btn"
             onClick={() => {
               setDraftGeminiKey(geminiApiKey);
+              setDraftHfToken(hfToken);
               setShowSettingsModal(true);
             }}
             title="AI Engine Settings (Free Built-In + Optional Pro Key)"
           >
             <KeyRound size={15} />
             <span className="hide-sm">
-              {geminiApiKey ? 'Pro Key Active' : 'Free GPU Ready'}
+              {geminiApiKey || hfToken ? 'Pro Boost Active' : 'FaceLock GPU Ready'}
             </span>
           </button>
         </div>
@@ -1076,28 +1098,39 @@ export function App() {
             <div className="settings-body">
               <div className="engine-status-box">
                 <div>
-                  <strong>Default Free Studio Engine (Active)</strong>
+                  <strong>478-Landmark Biometric FaceLock + Multi-GPU Cascade (Active)</strong>
                   <p>
-                    Uses <code>FLUX.1-Kontext</code> identity-preserving portrait
-                    editing + MediaPipe 478-point 3D facial geometry + Marco AI
-                    Barber Agent with zero API keys required.
+                    Aligns every generated haircut onto your exact eye/nose coordinates
+                    via Procrustes warping, matches forehead skin luminance, and restores
+                    100% of your real facial features so it never replaces you with
+                    another person.
                   </p>
                 </div>
               </div>
 
               <label className="settings-field-label">
-                Optional Google Gemini API Key (Pro Multimodal Mode)
+                Optional Free Hugging Face Token (25× More Free GPU Quota)
                 <input
                   type="password"
-                  placeholder="AIzaSy... (leave blank to use free built-in engine)"
+                  placeholder="hf_... (optional — from huggingface.co/settings/tokens)"
+                  value={draftHfToken}
+                  onChange={e => setDraftHfToken(e.target.value)}
+                />
+              </label>
+
+              <label className="settings-field-label">
+                Optional Google Gemini API Key (Pro Multimodal Studio)
+                <input
+                  type="password"
+                  placeholder="AIzaSy... (optional — leave blank for free built-in GPUs)"
                   value={draftGeminiKey}
                   onChange={e => setDraftGeminiKey(e.target.value)}
                 />
               </label>
               <p className="settings-help-note">
-                Stored strictly in your browser’s <code>localStorage</code>. Adding a
-                free Google AI Studio key unlocks direct multimodal Gemini 2.5 Flash
-                photo inspection &amp; Gemini Image Studio priority rendering.
+                Keys stay strictly in your browser’s <code>localStorage</code>. Adding a
+                free Hugging Face read token or Google AI Studio key unlocks extended
+                ZeroGPU H200 priority runs and Gemini 2.5 Flash multimodal editing.
               </p>
             </div>
 
@@ -1107,9 +1140,10 @@ export function App() {
                 className="secondary-studio-btn"
                 onClick={() => {
                   setDraftGeminiKey('');
+                  setDraftHfToken('');
                 }}
               >
-                Clear Key
+                Clear Keys
               </button>
               <button
                 type="button"

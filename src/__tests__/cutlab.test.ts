@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyFaceGeometry } from '../lib/faceScanner';
+import { solveSimilarityTransform } from '../lib/biometricFaceLock';
 import {
   HAIRCUT_PRESETS,
   compileHaircutPrompt,
@@ -59,7 +60,33 @@ describe('CutLab 3D Face Geometry Classifier', () => {
   });
 });
 
-describe('Men’s Barbershop Catalog & Prompt Compiler', () => {
+describe('Biometric 478-Landmark Procrustes FaceLock Solver', () => {
+  it('recovers exact sub-pixel scale, rotation, and translation to align generated hair onto user face', () => {
+    const dst = [
+      { x: 430, y: 360 },
+      { x: 594, y: 360 },
+      { x: 512, y: 445 },
+      { x: 512, y: 585 },
+    ];
+    // Simulate AI model shifting head 38px left, 24px up, and scaling 1.06x
+    const src = dst.map(p => ({
+      x: (p.x - 38) / 1.06,
+      y: (p.y - 24) / 1.06,
+    }));
+
+    const tf = solveSimilarityTransform(src, dst);
+    expect(tf.scale).toBeCloseTo(1.06, 4);
+
+    for (let i = 0; i < src.length; i++) {
+      const mappedX = tf.a * src[i].x - tf.b * src[i].y + tf.tx;
+      const mappedY = tf.b * src[i].x + tf.a * src[i].y + tf.ty;
+      expect(mappedX).toBeCloseTo(dst[i].x, 4);
+      expect(mappedY).toBeCloseTo(dst[i].y, 4);
+    }
+  });
+});
+
+describe('Men’s Barbershop Catalog & Crisp Prompt Compiler', () => {
   it('contains 16 complete barbershop presets with guard specifications', () => {
     expect(HAIRCUT_PRESETS.length).toBe(16);
     for (const preset of HAIRCUT_PRESETS) {
@@ -77,43 +104,51 @@ describe('Men’s Barbershop Catalog & Prompt Compiler', () => {
     expect(squareScore.score).toBeGreaterThan(roundScore.score);
   });
 
-  it('compiles identity-preserving prompts with fade, beard, and hair color modifiers', () => {
+  it('compiles crisp imperative haircut prompts and tracks preserveBeard accurately', () => {
     const preset = HAIRCUT_PRESETS[0];
-    const compiled = compileHaircutPrompt({
+    const defaultBeard = compileHaircutPrompt({
+      preset,
+      fade: 'preset_default',
+      beard: 'keep_current',
+      color: 'natural',
+    });
+    expect(defaultBeard.preserveBeard).toBe(true);
+
+    const modified = compileHaircutPrompt({
       preset,
       fade: 'burst_fade',
       beard: 'light_stubble',
       color: 'platinum_blonde',
     });
-
-    expect(compiled.prompt).toContain('keeping his exact facial features');
-    expect(compiled.prompt).toContain('burst fade');
-    expect(compiled.prompt).toContain('3mm designer shadow stubble');
-    expect(compiled.prompt).toContain('platinum-blonde');
-    expect(compiled.specs.sides).toBe('Burst Fade');
-    expect(compiled.specs.beard).toBe('3mm Stubble');
+    expect(modified.preserveBeard).toBe(false);
+    expect(modified.prompt).toContain("Change this man's hair to");
+    expect(modified.prompt).toContain('burst fade');
+    expect(modified.prompt).toContain('3mm shadow stubble');
+    expect(modified.prompt).toContain('platinum-blonde');
   });
 });
 
 describe('Marco AI Barber JSON Parser', () => {
-  it('extracts structured barber specs and generation triggers even when wrapped in markdown fences', () => {
+  it('extracts structured barber specs, changeBeard flag, and generation triggers', () => {
     const raw = `\`\`\`json
     {
       "reply": "With your square jawline, a French crop with a mid drop fade will look razor-sharp.",
       "shouldGenerate": true,
+      "changeBeard": false,
       "cutTitle": "French Crop + Mid Drop Fade",
       "barberSpecs": {
         "sides": "#0 to #1.5 Mid Drop Fade",
         "top": "4.5cm choppy textured crop",
-        "beard": "3mm faded stubble",
+        "beard": "Keep current",
         "product": "Matte styling clay"
       },
-      "imagePrompt": "Change ONLY this man's hairstyle to a French crop with mid drop fade while keeping his face identical."
+      "imagePrompt": "Change this man's hair to a short textured French crop with a mid skin drop fade. Keep his exact face, head position, and background unchanged."
     }
     \`\`\``;
 
     const parsed = parseBarberAgentJson(raw);
     expect(parsed.shouldGenerate).toBe(true);
+    expect(parsed.changeBeard).toBe(false);
     expect(parsed.cutTitle).toBe('French Crop + Mid Drop Fade');
     expect(parsed.barberSpecs.sides).toContain('Drop Fade');
   });

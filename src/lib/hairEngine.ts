@@ -1,22 +1,20 @@
 import type { BarberSpecs } from '../types/cutlab';
+import { applyBiometricFaceLock } from './biometricFaceLock';
 
 const CUTLAB_EDGE_URL =
   'https://zavtplsoyomtkxqldsnr.supabase.co/functions/v1/cutlab-agent';
-
-const KONTEXT_SPACES = [
-  'https://black-forest-labs-flux-1-kontext-dev.hf.space',
-];
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, b64] = dataUrl.split(',');
   const mimeMatch = header.match(/:(.*?);/);
   const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
   const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
+  const ab = new ArrayBuffer(binary.length);
+  const bytes = new Uint8Array(ab);
   for (let i = 0; i < binary.length; i++) {
     bytes[i] = binary.charCodeAt(i);
   }
-  return new Blob([bytes], { type: mime });
+  return new Blob([ab], { type: mime });
 }
 
 async function blobToDataUrl(blob: Blob): Promise<string> {
@@ -28,21 +26,23 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-async function runFluxKontextOnSpace(params: {
-  spaceBaseUrl: string;
-  sourceDataUrl: string;
-  prompt: string;
-  onStatus?: (msg: string) => void;
-}): Promise<string> {
-  const { spaceBaseUrl, sourceDataUrl, prompt, onStatus } = params;
-
-  onStatus?.('Uploading portrait to AI Barber GPU…');
+async function uploadPortraitToGradio(
+  spaceBaseUrl: string,
+  sourceDataUrl: string,
+  hfToken?: string
+): Promise<{ path: string; url: string }> {
   const blob = dataUrlToBlob(sourceDataUrl);
   const form = new FormData();
   form.append('files', blob, 'portrait.jpg');
 
+  const headers: Record<string, string> = {};
+  if (hfToken?.trim()) {
+    headers['Authorization'] = `Bearer ${hfToken.trim()}`;
+  }
+
   const upRes = await fetch(`${spaceBaseUrl}/gradio_api/upload`, {
     method: 'POST',
+    headers,
     body: form,
   });
   if (!upRes.ok) {
@@ -52,31 +52,29 @@ async function runFluxKontextOnSpace(params: {
   if (!uploadedPaths?.[0]) {
     throw new Error('Missing uploaded file handle from GPU node.');
   }
+  return {
+    path: uploadedPaths[0],
+    url: `${spaceBaseUrl}/gradio_api/file=${uploadedPaths[0]}`,
+  };
+}
 
-  onStatus?.('Sculpting haircut while locking facial identity…');
-  const callRes = await fetch(`${spaceBaseUrl}/gradio_api/call/infer`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      data: [
-        { path: uploadedPaths[0], meta: { _type: 'gradio.FileData' } },
-        prompt,
-        0,
-        true,
-        2.5,
-        24,
-      ],
-    }),
-  });
-  if (!callRes.ok) {
-    throw new Error(`Inference queue returned HTTP ${callRes.status}`);
-  }
-  const { event_id: eventId } = await callRes.json();
-  if (!eventId) {
-    throw new Error('Missing inference event_id.');
+async function streamGradioEventResult(params: {
+  spaceBaseUrl: string;
+  endpoint: string;
+  eventId: string;
+  hfToken?: string;
+  onStatus?: (msg: string) => void;
+}): Promise<string> {
+  const { spaceBaseUrl, endpoint, eventId, hfToken, onStatus } = params;
+  const headers: Record<string, string> = {};
+  if (hfToken?.trim()) {
+    headers['Authorization'] = `Bearer ${hfToken.trim()}`;
   }
 
-  const sseRes = await fetch(`${spaceBaseUrl}/gradio_api/call/infer/${eventId}`);
+  const sseRes = await fetch(
+    `${spaceBaseUrl}/gradio_api/call${endpoint}/${eventId}`,
+    { headers }
+  );
   if (!sseRes.ok || !sseRes.body) {
     throw new Error(`Stream returned HTTP ${sseRes.status}`);
   }
@@ -103,7 +101,7 @@ async function runFluxKontextOnSpace(params: {
         currentEvent = line.slice(6).trim();
         if (currentEvent === 'heartbeat') {
           heartbeats += 1;
-          onStatus?.(`Rendering hair strands & fade (${heartbeats * 3}s)…`);
+          onStatus?.(`Sculpting hair strands & fade (${heartbeats * 3}s)…`);
         }
       } else if (line.startsWith('data:')) {
         const dataStr = line.slice(5).trim();
@@ -111,7 +109,7 @@ async function runFluxKontextOnSpace(params: {
           throw new Error(
             dataStr && dataStr !== 'null'
               ? dataStr
-              : 'Free GPU queue is busy right now — retry in a few seconds or add a free Gemini API key in Settings.'
+              : 'GPU node busy — switching to backup barber GPU…'
           );
         }
         if (currentEvent === 'complete') {
@@ -131,75 +129,308 @@ async function runFluxKontextOnSpace(params: {
     throw new Error('GPU finished without returning an image URL.');
   }
 
-  onStatus?.('Finalizing studio portrait…');
   const imgRes = await fetch(resultUrl);
   if (!imgRes.ok) {
     throw new Error(`Failed fetching rendered portrait (HTTP ${imgRes.status})`);
   }
-  const outBlob = await imgRes.blob();
-  // Normalize back onto 1024x1024 JPEG so Before/After split slider matches 1:1
-  const rawOutDataUrl = await blobToDataUrl(outBlob);
-  return ensureExact1024DataUrl(rawOutDataUrl);
+  return blobToDataUrl(await imgRes.blob());
 }
 
-async function ensureExact1024DataUrl(srcDataUrl: string): Promise<string> {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = 1024;
-      c.height = 1024;
-      const ctx = c.getContext('2d');
-      if (!ctx) {
-        resolve(srcDataUrl);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, 1024, 1024);
-      resolve(c.toDataURL('image/jpeg', 0.92));
-    };
-    img.onerror = () => resolve(srcDataUrl);
-    img.src = srcDataUrl;
+/**
+ * Engine 1: Qwen-Edit-2511 Rapid-AIO (4-step Lightning — ~4s GPU time, allows 12-15+ free edits/hr!)
+ */
+async function runQwenRapidAio(params: {
+  sourceDataUrl: string;
+  prompt: string;
+  hfToken?: string;
+  onStatus?: (msg: string) => void;
+}): Promise<string> {
+  const spaceBaseUrl = 'https://kulkas2pintu-qwen-edit-image.hf.space';
+  params.onStatus?.('Uploading portrait to Rapid Barber GPU…');
+  const uploaded = await uploadPortraitToGradio(
+    spaceBaseUrl,
+    params.sourceDataUrl,
+    params.hfToken
+  );
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.hfToken?.trim()) {
+    headers['Authorization'] = `Bearer ${params.hfToken.trim()}`;
+  }
+
+  params.onStatus?.('Sculpting new haircut silhouette…');
+  const callRes = await fetch(`${spaceBaseUrl}/gradio_api/call/edit`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      data: [
+        {
+          path: uploaded.path,
+          url: uploaded.url,
+          orig_name: 'portrait.jpg',
+          meta: { _type: 'gradio.FileData' },
+        },
+        params.prompt,
+        '',
+        null,
+        0,
+        true,
+        1.5,
+        4,
+        false, // false so Space doesn't inject "keep same hairstyle"; our 478-landmark FaceLock locks the real face!
+        0,
+        1024,
+        false,
+        false,
+      ],
+    }),
+  });
+  if (!callRes.ok) {
+    throw new Error(`Rapid GPU HTTP ${callRes.status}`);
+  }
+  const { event_id: eventId } = await callRes.json();
+  return streamGradioEventResult({
+    spaceBaseUrl,
+    endpoint: '/edit',
+    eventId,
+    hfToken: params.hfToken,
+    onStatus: params.onStatus,
   });
 }
 
-export async function generateHaircutTransformation(params: {
+/**
+ * Engine 2: FLUX.1-Kontext-Dev (Guidance 3.5 + Full FileData URL + 26 steps)
+ */
+async function runFluxKontext(params: {
   sourceDataUrl: string;
   prompt: string;
-  geminiApiKey?: string;
+  hfToken?: string;
   onStatus?: (msg: string) => void;
-}): Promise<{ imageDataUrl: string; engineUsed: string }> {
-  const { sourceDataUrl, prompt, geminiApiKey, onStatus } = params;
+}): Promise<string> {
+  const spaceBaseUrl = 'https://black-forest-labs-flux-1-kontext-dev.hf.space';
+  params.onStatus?.('Uploading portrait to FLUX Kontext GPU…');
+  const uploaded = await uploadPortraitToGradio(
+    spaceBaseUrl,
+    params.sourceDataUrl,
+    params.hfToken
+  );
 
-  if (geminiApiKey && geminiApiKey.trim()) {
-    onStatus?.('Generating HD edit with Gemini Image Studio…');
-    const res = await fetch(CUTLAB_EDGE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'gemini_image',
-        geminiApiKey: geminiApiKey.trim(),
-        imageBase64: sourceDataUrl,
-        prompt,
-      }),
-    });
-    const data = await res.json();
-    if (res.ok && data?.ok && data?.imageDataUrl) {
-      const normalized = await ensureExact1024DataUrl(String(data.imageDataUrl));
-      return { imageDataUrl: normalized, engineUsed: 'Gemini Pro Studio' };
-    }
-    // If Gemini image model isn't enabled on their free key, fall back smoothly to FLUX.1 Kontext!
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.hfToken?.trim()) {
+    headers['Authorization'] = `Bearer ${params.hfToken.trim()}`;
   }
 
-  let lastErr: Error | null = null;
-  for (const space of KONTEXT_SPACES) {
+  params.onStatus?.('Rendering high-detail hair & fade…');
+  const callRes = await fetch(`${spaceBaseUrl}/gradio_api/call/infer`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      data: [
+        {
+          path: uploaded.path,
+          url: uploaded.url,
+          orig_name: 'portrait.jpg',
+          meta: { _type: 'gradio.FileData' },
+        },
+        params.prompt,
+        0,
+        true,
+        3.5, // Stronger haircut prompt adherence (was 2.5); FaceLock restores 100% real face afterward!
+        26,
+      ],
+    }),
+  });
+  if (!callRes.ok) {
+    throw new Error(`Kontext HTTP ${callRes.status}`);
+  }
+  const { event_id: eventId } = await callRes.json();
+  return streamGradioEventResult({
+    spaceBaseUrl,
+    endpoint: '/infer',
+    eventId,
+    hfToken: params.hfToken,
+    onStatus: params.onStatus,
+  });
+}
+
+/**
+ * Engine 3: Official Qwen-Image-Edit Space
+ */
+async function runQwenOfficialEdit(params: {
+  sourceDataUrl: string;
+  prompt: string;
+  hfToken?: string;
+  onStatus?: (msg: string) => void;
+}): Promise<string> {
+  const spaceBaseUrl = 'https://qwen-qwen-image-edit.hf.space';
+  params.onStatus?.('Connecting to Qwen Studio GPU…');
+  const uploaded = await uploadPortraitToGradio(
+    spaceBaseUrl,
+    params.sourceDataUrl,
+    params.hfToken
+  );
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (params.hfToken?.trim()) {
+    headers['Authorization'] = `Bearer ${params.hfToken.trim()}`;
+  }
+
+  const callRes = await fetch(`${spaceBaseUrl}/gradio_api/call/infer`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      data: [
+        {
+          path: uploaded.path,
+          url: uploaded.url,
+          orig_name: 'portrait.jpg',
+          meta: { _type: 'gradio.FileData' },
+        },
+        params.prompt,
+        0,
+        true,
+        4.0,
+        36,
+        true,
+      ],
+    }),
+  });
+  if (!callRes.ok) {
+    throw new Error(`Qwen Official HTTP ${callRes.status}`);
+  }
+  const { event_id: eventId } = await callRes.json();
+  return streamGradioEventResult({
+    spaceBaseUrl,
+    endpoint: '/infer',
+    eventId,
+    hfToken: params.hfToken,
+    onStatus: params.onStatus,
+  });
+}
+
+/**
+ * Engine 4: Cloud Worker Relay Fallback (uses Edge Function egress pool)
+ */
+async function runCloudRelayEdit(params: {
+  sourceDataUrl: string;
+  prompt: string;
+  hfToken?: string;
+  onStatus?: (msg: string) => void;
+}): Promise<{ rawDataUrl: string; label: string }> {
+  params.onStatus?.('Routing via CutLab Cloud Barber Relay…');
+  const res = await fetch(CUTLAB_EDGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'hair_edit_relay',
+      sourceDataUrl: params.sourceDataUrl,
+      prompt: params.prompt,
+      guidanceScale: 3.5,
+      hfToken: params.hfToken || '',
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.ok || !data?.imageDataUrl) {
+    throw new Error(data?.error || 'Cloud Barber Relay busy');
+  }
+  return {
+    rawDataUrl: String(data.imageDataUrl),
+    label: String(data.engineUsed || 'CutLab Cloud GPU'),
+  };
+}
+
+export async function generateHaircutTransformation(params: {
+  originalIdentityDataUrl: string;
+  sourceDataUrl: string;
+  prompt: string;
+  preserveBeard: boolean;
+  geminiApiKey?: string;
+  hfToken?: string;
+  onStatus?: (msg: string) => void;
+}): Promise<{ imageDataUrl: string; engineUsed: string }> {
+  const {
+    originalIdentityDataUrl,
+    sourceDataUrl,
+    prompt,
+    preserveBeard,
+    geminiApiKey,
+    hfToken,
+    onStatus,
+  } = params;
+
+  const lockToUserIdentity = async (rawDataUrl: string, label: string) => {
+    onStatus?.('Locking 478 facial landmarks to preserve 100% your real face…');
+    const lockedDataUrl = await applyBiometricFaceLock({
+      originalDataUrl: originalIdentityDataUrl,
+      generatedDataUrl: rawDataUrl,
+      preserveBeard,
+    });
+    return { imageDataUrl: lockedDataUrl, engineUsed: label };
+  };
+
+  // Optional BYOK Gemini Pro Studio first if user configured a key
+  if (geminiApiKey && geminiApiKey.trim()) {
     try {
-      const out = await runFluxKontextOnSpace({
-        spaceBaseUrl: space,
-        sourceDataUrl,
-        prompt,
-        onStatus,
+      onStatus?.('Generating HD edit with Gemini Image Studio…');
+      const res = await fetch(CUTLAB_EDGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'gemini_image',
+          geminiApiKey: geminiApiKey.trim(),
+          imageBase64: sourceDataUrl,
+          prompt,
+        }),
       });
-      return { imageDataUrl: out, engineUsed: 'FLUX.1 Kontext' };
+      const data = await res.json();
+      if (res.ok && data?.ok && data?.imageDataUrl) {
+        return await lockToUserIdentity(
+          String(data.imageDataUrl),
+          'Gemini Pro + FaceLock'
+        );
+      }
+    } catch {
+      // Smoothly continue into multi-GPU cascade
+    }
+  }
+
+  // Zero-Key Multi-GPU Cascade:
+  // 1) FLUX.1 Kontext (guidance 3.5) -> 2) Qwen-2511 Rapid-AIO (4-step ultra-low-quota) -> 3) Qwen Official -> 4) Cloud Worker Relay
+  const attempts: {
+    label: string;
+    run: () => Promise<string>;
+  }[] = [
+    {
+      label: 'FLUX.1 Kontext + FaceLock',
+      run: () => runFluxKontext({ sourceDataUrl, prompt, hfToken, onStatus }),
+    },
+    {
+      label: 'Qwen-2511 Rapid + FaceLock',
+      run: () => runQwenRapidAio({ sourceDataUrl, prompt, hfToken, onStatus }),
+    },
+    {
+      label: 'Qwen Studio + FaceLock',
+      run: () => runQwenOfficialEdit({ sourceDataUrl, prompt, hfToken, onStatus }),
+    },
+    {
+      label: 'Cloud Relay + FaceLock',
+      run: async () => {
+        const r = await runCloudRelayEdit({
+          sourceDataUrl,
+          prompt,
+          hfToken,
+          onStatus,
+        });
+        return r.rawDataUrl;
+      },
+    },
+  ];
+
+  let lastErr: Error | null = null;
+  for (const candidate of attempts) {
+    try {
+      const rawOut = await candidate.run();
+      return await lockToUserIdentity(rawOut, candidate.label);
     } catch (err) {
       lastErr = err instanceof Error ? err : new Error(String(err));
     }
@@ -207,13 +438,16 @@ export async function generateHaircutTransformation(params: {
 
   throw (
     lastErr ||
-    new Error('Could not generate haircut right now. Please try again in a moment.')
+    new Error(
+      'All free barber GPUs are momentarily at capacity — add a free Hugging Face token or Gemini key in Settings for instant priority runs.'
+    )
   );
 }
 
 export type BarberAgentResponse = {
   reply: string;
   shouldGenerate: boolean;
+  changeBeard: boolean;
   cutTitle: string;
   barberSpecs: BarberSpecs;
   imagePrompt: string;
@@ -240,6 +474,7 @@ export function parseBarberAgentJson(rawText: string): BarberAgentResponse {
         String(parsed.reply || '').trim() ||
         "Let's dial that cut in on your portrait right now.",
       shouldGenerate: Boolean(parsed.shouldGenerate),
+      changeBeard: Boolean(parsed.changeBeard),
       cutTitle: String(parsed.cutTitle || 'AI Custom Barber Cut').trim(),
       barberSpecs: {
         sides: String(parsed.barberSpecs?.sides || 'Tailored Taper / Fade'),
@@ -255,6 +490,7 @@ export function parseBarberAgentJson(rawText: string): BarberAgentResponse {
         cleaned ||
         'Got it — tell me how short you want the sides or how much texture you want on top!',
       shouldGenerate: false,
+      changeBeard: false,
       cutTitle: 'Custom Cut',
       barberSpecs: {
         sides: 'Tailored Taper',

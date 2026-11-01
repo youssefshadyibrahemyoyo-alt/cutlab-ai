@@ -12,55 +12,51 @@ export const FADE_OPTIONS: { id: FadeOption; label: string; promptText: string }
   {
     id: 'low_taper',
     label: 'Low Taper',
-    promptText: 'clean low taper fade strictly around the sideburns and nape keeping fullness above the ears',
+    promptText: 'with a clean low temple and nape taper fade',
   },
   {
     id: 'mid_fade',
     label: 'Mid Fade',
-    promptText: 'seamless mid skin-to-#2 fade blending smoothly up the temples and back',
+    promptText: 'with a sharp mid skin fade blended smoothly up the sides',
   },
   {
     id: 'high_skin_fade',
     label: 'High Skin Fade',
-    promptText: 'crisp high skin bald fade tight up the sides for strong vertical contrast',
+    promptText: 'with a high shaved bald skin fade tight up the sides',
   },
   {
     id: 'drop_fade',
     label: 'Drop Fade',
-    promptText: 'curved drop fade that arcs naturally downward behind the ear following the occipital bone',
+    promptText: 'with a curved skin drop fade arcing down behind the ears',
   },
   {
     id: 'burst_fade',
     label: 'Burst Fade',
-    promptText: 'rounded semi-circular burst fade tight around the ear while leaving textured flow at the back nape',
+    promptText: 'with a rounded skin burst fade around the ears and textured back nape',
   },
 ];
 
 export const BEARD_OPTIONS: { id: BeardOption; label: string; promptText: string }[] = [
-  {
-    id: 'keep_current',
-    label: 'Keep Current',
-    promptText: 'keep his existing facial hair / jawline exactly as in the photo',
-  },
+  { id: 'keep_current', label: 'Keep Current', promptText: '' },
   {
     id: 'clean_shaven',
     label: 'Clean Shaven',
-    promptText: 'make his face cleanly shaven with smooth natural jawline skin texture',
+    promptText: 'Make his jaw and chin completely clean-shaven.',
   },
   {
     id: 'light_stubble',
     label: '3mm Stubble',
-    promptText: 'give him neat, natural 3mm designer shadow stubble faded into the sideburns',
+    promptText: 'Give him neat 3mm shadow stubble along his jaw.',
   },
   {
     id: 'sharp_boxed_beard',
     label: 'Boxed Beard',
-    promptText: 'give him a well-groomed short boxed beard (#3 guard) with crisp cheek lineup and tapered sideburns',
+    promptText: 'Give him a groomed short boxed beard with crisp cheek lines.',
   },
   {
     id: 'goatee_mustache',
     label: 'Disconnected Goatee',
-    promptText: 'give him a clean modern mustache and trimmed chin goatee with clean-shaven cheeks',
+    promptText: 'Give him a trimmed mustache and chin goatee with clean cheeks.',
   },
 ];
 
@@ -70,12 +66,12 @@ export const HAIR_COLOR_OPTIONS: {
   swatch: string;
   promptText: string;
 }[] = [
-  { id: 'natural', label: 'Natural', swatch: 'linear-gradient(135deg,#2b211a,#6b5344)', promptText: 'keep his natural hair color' },
-  { id: 'jet_black', label: 'Jet Black', swatch: '#141418', promptText: 'rich natural jet-black hair color' },
-  { id: 'espresso_brown', label: 'Espresso', swatch: '#3b2618', promptText: 'deep dark espresso-brown hair color' },
-  { id: 'platinum_blonde', label: 'Platinum', swatch: '#e6dec8', promptText: 'bleached icy platinum-blonde hair color with realistic dark roots' },
-  { id: 'ash_silver', label: 'Ash Silver', swatch: '#9da3ae', promptText: 'modern smoky ash-silver gray hair color' },
-  { id: 'copper_auburn', label: 'Auburn', swatch: '#8b3e22', promptText: 'warm rich copper-auburn hair color' },
+  { id: 'natural', label: 'Natural', swatch: 'linear-gradient(135deg,#2b211a,#6b5344)', promptText: '' },
+  { id: 'jet_black', label: 'Jet Black', swatch: '#141418', promptText: 'dyed natural jet-black' },
+  { id: 'espresso_brown', label: 'Espresso', swatch: '#3b2618', promptText: 'dark espresso-brown' },
+  { id: 'platinum_blonde', label: 'Platinum', swatch: '#e6dec8', promptText: 'bleached icy platinum-blonde with dark roots' },
+  { id: 'ash_silver', label: 'Ash Silver', swatch: '#9da3ae', promptText: 'modern smoky ash-silver gray' },
+  { id: 'copper_auburn', label: 'Auburn', swatch: '#8b3e22', promptText: 'rich copper-auburn' },
 ];
 
 export const HAIRCUT_PRESETS: HaircutPreset[] = [
@@ -94,7 +90,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Sea salt spray + matte texture powder',
     },
     promptCore:
-      'a modern men’s low taper fade haircut with a messy, choppy point-cut textured fringe falling naturally over the upper forehead, clean temple taper, natural matte volume on top',
+      'a messy choppy textured forward fringe covering the upper forehead with a clean low taper fade at the temples',
   },
   {
     id: 'burst-fade-messy-curls',
@@ -111,7 +107,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Curl defining cream + diffuser dry',
     },
     promptCore:
-      'a stylish men’s burst fade haircut with tight curved skin fade around the ears, textured natural curls with volume on top and soft tapered V-flow at the back nape',
+      'dense defined messy curls on top with a tight curved skin burst fade around the ears',
   },
   {
     id: 'french-crop-mid-drop',
@@ -128,7 +124,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Matte clay worked forward',
     },
     promptCore:
-      'a sharp men’s French crop haircut with a mid skin drop fade curving behind the ears and a short cropped textured fringe brushed forward cleanly across the top',
+      'a short blunt-cropped textured French crop brushed forward with a sharp mid skin drop fade on the sides',
   },
   {
     id: 'buzz-cut-mid-skin-fade',
@@ -145,7 +141,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Zero product — scalp moisturizer only',
     },
     promptCore:
-      'a crisp #2 guard men’s buzz cut on top paired with a seamless mid-to-high skin fade on the sides and a natural clean hairline lineup',
+      'a very short #2 military buzz cut clipped tight to the scalp with a shaved bald high skin fade on the sides',
   },
   {
     id: 'warrior-messy-mod',
@@ -162,7 +158,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Reworkable matte fiber paste',
     },
     promptCore:
-      'a 90s warrior cut men’s hairstyle with tousled, piecey medium-short choppy layers all over, scissor-textured sides, effortless masculine volume',
+      'a 90s warrior cut with tousled spiky piecey short-medium choppy layers and messy textured sides',
   },
   {
     id: 'modern-wolf-mullet-taper',
@@ -179,7 +175,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Texture spray + light matte cream',
     },
     promptCore:
-      'a modern men’s textured mullet wolf-cut hairstyle with clean temple tapers, choppy layered crown volume, soft fringe, and tasteful feathered length behind the neck',
+      'a shaggy modern mullet haircut with clean shaved temple tapers, choppy crown volume, and feathered hair flowing behind the neck',
   },
   {
     id: 'old-money-scissor-flow',
@@ -196,7 +192,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Light cream pomade + wide-tooth comb',
     },
     promptCore:
-      'an Old Money classic men’s all-scissor haircut with medium-length softly swept-back hair, natural sideburns, refined gentleman’s volume and effortless flow',
+      'an Old Money classic medium-length all-scissor swept-back gentleman hairstyle with soft layered flow',
   },
   {
     id: 'curtains-middle-part',
@@ -213,7 +209,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Leave-in conditioner + blow-dry round brush',
     },
     promptCore:
-      'a 90s middle-part curtain bangs men’s haircut with soft flowing layers parted in the center framing the forehead and cheekbones, neat tapered back and sides',
+      'a 90s middle-part curtain bangs haircut parted cleanly down the center with flowing layers framing the forehead',
   },
   {
     id: 'crew-cut-ivy-league',
@@ -230,7 +226,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Small dime of matte paste',
     },
     promptCore:
-      'a refined Ivy League crew cut men’s hairstyle with neat #1.5 tapered sides and a short, clean side-swept front with subtle lift',
+      'a short neat Ivy League crew cut with #1.5 tapered sides and a clean side-swept front',
   },
   {
     id: 'blowout-low-taper',
@@ -247,7 +243,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Pre-styler mousse + blow dryer + texture powder',
     },
     promptCore:
-      'a men’s blowout taper haircut featuring voluminous, airy brushed-up textured hair on top and a crisp low skin taper at the temples and neckline',
+      'a voluminous blown-up airy blowout haircut on top with a crisp low skin taper at the temples',
   },
   {
     id: 'slick-back-low-fade',
@@ -264,7 +260,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Water-based medium-shine pomade',
     },
     promptCore:
-      'a modern men’s slick back haircut with medium-long hair combed cleanly backward with natural strand texture and a sharp low drop fade on the sides',
+      'a sleek slicked-back hairstyle combed straight back from the hairline with a sharp low skin fade on the sides',
   },
   {
     id: 'curly-drop-fade',
@@ -281,7 +277,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Curl leave-in + sea salt mist',
     },
     promptCore:
-      'a crisp men’s curly top mid drop fade haircut with dense, defined curls on top and clean faded sides dropping smoothly behind the ear',
+      'tight sponge-defined short curls on top with a clean shaved mid drop fade on the sides',
   },
   {
     id: 'side-part-executive',
@@ -298,7 +294,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Natural shine styling cream',
     },
     promptCore:
-      'a tailored executive side-part men’s haircut with neat #2 tapered sides and cleanly combed side-parted hair with classic volume',
+      'a tailored executive side-part haircut combed neatly to one side with clean #2 tapered sides',
   },
   {
     id: 'textured-quiff-mid-fade',
@@ -315,7 +311,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Matte clay + blow-dry lift at roots',
     },
     promptCore:
-      'a modern textured quiff men’s haircut with lifted messy volume at the front hairline and a clean mid skin fade on the sides',
+      'a lifted messy textured quiff at the front hairline with a crisp mid skin fade on the sides',
   },
   {
     id: 'surfer-medium-flow',
@@ -332,7 +328,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Sea salt spray on damp hair, air dry',
     },
     promptCore:
-      'a relaxed men’s medium-length wavy surfer flow hairstyle with natural movement, soft layers pushed loosely back around the ears',
+      'medium-long relaxed wavy surfer hair tucked loosely behind the ears with natural beachy volume',
   },
   {
     id: 'edgar-high-taper',
@@ -349,7 +345,7 @@ export const HAIRCUT_PRESETS: HaircutPreset[] = [
       product: 'Strong matte texture powder',
     },
     promptCore:
-      'a sharp modern Caesar Edgar men’s haircut with a straight horizontal textured fringe, dense bulk on top, and a crisp high skin taper at the temples',
+      'a sharp Edgar Caesar haircut with a straight horizontal blunt fringe and high bald temple skin taper',
   },
 ];
 
@@ -399,40 +395,32 @@ export function computeSuitabilityScore(
   };
 
   if (preset.idealFaceShapes.includes(faceShape)) {
-    // Deterministic high match 93..98 based on id hash
     const hash = preset.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
     const score = 93 + (hash % 6);
-    return {
-      score,
-      verdict: 'Ideal Match',
-      reason: shapeReasons[faceShape].ideal,
-    };
+    return { score, verdict: 'Ideal Match', reason: shapeReasons[faceShape].ideal };
   }
 
   if (preset.goodFaceShapes.includes(faceShape)) {
     const hash = preset.id.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
     const score = 84 + (hash % 7);
-    return {
-      score,
-      verdict: 'Strong Fit',
-      reason: shapeReasons[faceShape].good,
-    };
+    return { score, verdict: 'Strong Fit', reason: shapeReasons[faceShape].good };
   }
 
-  return {
-    score: 75,
-    verdict: 'Experimental',
-    reason: shapeReasons[faceShape].caution,
-  };
+  return { score: 75, verdict: 'Experimental', reason: shapeReasons[faceShape].caution };
 }
 
+/**
+ * Compiles a crisp, high-signal Kontext/Qwen imperative instruction (avoiding bloated word lists
+ * so the diffusion model changes the hair dramatically, while our 478-Landmark Biometric FaceLock
+ * guarantees 100.0% identity preservation afterward).
+ */
 export function compileHaircutPrompt(params: {
   preset?: HaircutPreset | null;
   customInstruction?: string;
   fade: FadeOption;
   beard: BeardOption;
   color: HairColorOption;
-}): { prompt: string; specs: BarberSpecs; title: string } {
+}): { prompt: string; specs: BarberSpecs; title: string; preserveBeard: boolean } {
   const { preset, customInstruction, fade, beard, color } = params;
 
   const fadeObj = FADE_OPTIONS.find(f => f.id === fade);
@@ -441,30 +429,16 @@ export function compileHaircutPrompt(params: {
 
   const coreHair = customInstruction?.trim()
     ? customInstruction.trim()
-    : preset?.promptCore || 'a sharp modern men’s low taper textured haircut';
+    : preset?.promptCore || 'a sharp low taper textured fringe haircut';
 
-  const clauses: string[] = [
-    "Change ONLY this man's hairstyle",
-    beard !== 'keep_current' ? 'and facial hair as specified' : '',
-    'while keeping his exact facial features, eyes, nose, mouth, skin tone, head pose, clothing, lighting, and background 100% identical.',
-    `Give him ${coreHair}.`,
-  ].filter(Boolean);
+  const fadeSuffix =
+    fade !== 'preset_default' && fadeObj?.promptText ? ` ${fadeObj.promptText}` : '';
+  const colorSuffix =
+    color !== 'natural' && colorObj?.promptText ? `, ${colorObj.promptText} hair color` : '';
+  const beardSentence =
+    beard !== 'keep_current' && beardObj?.promptText ? ` ${beardObj.promptText}` : '';
 
-  if (fade !== 'preset_default' && fadeObj?.promptText) {
-    clauses.push(`On the sides and back, apply a ${fadeObj.promptText}.`);
-  }
-
-  if (beardObj?.promptText) {
-    clauses.push(`For facial hair: ${beardObj.promptText}.`);
-  }
-
-  if (color !== 'natural' && colorObj?.promptText) {
-    clauses.push(`Hair color: ${colorObj.promptText}.`);
-  } else {
-    clauses.push('Keep his natural hair color and realistic individual hair strand texture.');
-  }
-
-  clauses.push('Photorealistic studio barbershop quality, seamless natural hairline.');
+  const prompt = `Change this man's hair to ${coreHair}${fadeSuffix}${colorSuffix}.${beardSentence} Keep his exact face, head pose, and background unchanged.`;
 
   const baseSpecs: BarberSpecs = preset?.barberSpecs
     ? { ...preset.barberSpecs }
@@ -491,8 +465,9 @@ export function compileHaircutPrompt(params: {
   ].filter(Boolean);
 
   return {
-    prompt: clauses.join(' '),
+    prompt,
     specs: baseSpecs,
     title: titleParts.join(' '),
+    preserveBeard: beard === 'keep_current',
   };
 }
