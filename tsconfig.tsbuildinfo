@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/__tests__/cutlab.test.ts","./src/components/CompareGridModal.tsx","./src/components/SplitCompareCanvas.tsx","./src/components/WebcamModal.tsx","./src/lib/barberCardExport.ts","./src/lib/faceScanner.ts","./src/lib/hairEngine.ts","./src/lib/haircutCatalog.ts","./src/types/cutlab.ts"],"version":"5.7.3"}
