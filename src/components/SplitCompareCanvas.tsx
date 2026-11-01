@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { Eye, Sparkles, ScanFace } from 'lucide-react';
+import { Eye, MoveHorizontal, ScanFace, ShieldCheck, Sparkles } from 'lucide-react';
 import type { FaceAnalysis, GeneratedLook } from '../types/cutlab';
 
 type Props = {
@@ -22,7 +22,7 @@ export const SplitCompareCanvas: React.FC<Props> = ({
   generationStatus,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [splitPct, setSplitPct] = useState<number>(52);
+  const [splitPct, setSplitPct] = useState<number>(50);
   const [dragging, setDragging] = useState(false);
   const [holdOriginal, setHoldOriginal] = useState(false);
 
@@ -80,62 +80,65 @@ export const SplitCompareCanvas: React.FC<Props> = ({
       >
         <path
           d={contourPath}
-          fill="rgba(212, 168, 83, 0.06)"
-          stroke="rgba(229, 193, 112, 0.78)"
-          strokeWidth="2.4"
-          strokeDasharray="8 5"
+          fill="rgba(45, 212, 191, 0.05)"
+          stroke="rgba(45, 212, 191, 0.78)"
+          strokeWidth="2.2"
+          strokeDasharray="7 5"
         />
-        {/* Forehead span */}
         <line
           x1={leftForehead.x * 1000}
           y1={leftForehead.y * 1000}
           x2={rightForehead.x * 1000}
           y2={rightForehead.y * 1000}
-          stroke="rgba(255,255,255,0.55)"
+          stroke="rgba(255,255,255,0.6)"
           strokeWidth="1.8"
           strokeDasharray="4 4"
         />
-        {/* Cheekbone span */}
         <line
           x1={leftCheek.x * 1000}
           y1={leftCheek.y * 1000}
           x2={rightCheek.x * 1000}
           y2={rightCheek.y * 1000}
-          stroke="#E5C170"
+          stroke="#E8622A"
           strokeWidth="2.4"
         />
-        {/* Jaw width span */}
         <line
           x1={leftJaw.x * 1000}
           y1={leftJaw.y * 1000}
           x2={rightJaw.x * 1000}
           y2={rightJaw.y * 1000}
-          stroke="rgba(96, 165, 250, 0.8)"
+          stroke="#2DD4BF"
           strokeWidth="2"
           strokeDasharray="6 4"
         />
-        {/* Vertical symmetry axis */}
         <line
           x1={topForehead.x * 1000}
           y1={topForehead.y * 1000}
           x2={chin.x * 1000}
           y2={chin.y * 1000}
-          stroke="rgba(229, 193, 112, 0.45)"
-          strokeWidth="1.5"
+          stroke="rgba(255, 255, 255, 0.36)"
+          strokeWidth="1.4"
         />
-        {[leftCheek, rightCheek, leftJaw, rightJaw, leftForehead, rightForehead, topForehead, chin].map(
-          (p, idx) => (
-            <circle
-              key={idx}
-              cx={p.x * 1000}
-              cy={p.y * 1000}
-              r="5.5"
-              fill="#09090B"
-              stroke="#E5C170"
-              strokeWidth="2.5"
-            />
-          )
-        )}
+        {[
+          leftCheek,
+          rightCheek,
+          leftJaw,
+          rightJaw,
+          leftForehead,
+          rightForehead,
+          topForehead,
+          chin,
+        ].map((p, idx) => (
+          <circle
+            key={idx}
+            cx={p.x * 1000}
+            cy={p.y * 1000}
+            r="5"
+            fill="#070708"
+            stroke="#2DD4BF"
+            strokeWidth="2.4"
+          />
+        ))}
       </svg>
     );
   };
@@ -152,7 +155,6 @@ export const SplitCompareCanvas: React.FC<Props> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        {/* Base Layer: Either Generated After Look (when active) or Original Portrait */}
         <img
           src={hasComparison && activeLook ? activeLook.imageUrl : originalPhotoUrl}
           alt={hasComparison && activeLook ? activeLook.title : 'Original portrait'}
@@ -160,7 +162,6 @@ export const SplitCompareCanvas: React.FC<Props> = ({
           draggable={false}
         />
 
-        {/* Clipped Left Curtain: Original Before Photo when comparing */}
         {hasComparison && activeLook && (
           <div
             className="mirror-before-curtain"
@@ -175,27 +176,30 @@ export const SplitCompareCanvas: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Biometric Face Mesh Overlay */}
         {renderBiometricOverlay()}
 
-        {/* Split Divider Handle */}
+        {/* Architectural Viewfinder Corner Reticles */}
+        <span className="vf-tick vf-tl" />
+        <span className="vf-tick vf-tr" />
+        <span className="vf-tick vf-bl" />
+        <span className="vf-tick vf-br" />
+
         {hasComparison && activeLook && !isGenerating && (
           <>
-            <div className="split-badge split-badge-left">BEFORE</div>
-            <div className="split-badge split-badge-right">AFTER · {activeLook.engineUsed}</div>
-            <div
-              className="split-divider-line"
-              style={{ left: `${splitPct}%` }}
-            >
+            <div className="split-badge split-badge-left">ORIGINAL</div>
+            <div className="split-badge split-badge-right">
+              <ShieldCheck size={12} />
+              <span>FACELOCK · {activeLook.engineUsed.split('+')[0].trim()}</span>
+            </div>
+            <div className="split-divider-line" style={{ left: `${splitPct}%` }}>
               <div className="split-divider-knob" title="Drag left/right to compare">
-                <span>◀</span>
-                <span>▶</span>
+                <MoveHorizontal size={16} />
               </div>
             </div>
           </>
         )}
 
-        {/* Floating Corner Controls */}
+        {/* Floating Glass Controls inside Mirror */}
         <div className="mirror-floating-controls">
           {faceAnalysis && faceAnalysis.landmarks2D.length > 0 && (
             <button
@@ -206,8 +210,8 @@ export const SplitCompareCanvas: React.FC<Props> = ({
                 onToggleMesh();
               }}
             >
-              <ScanFace size={14} />
-              <span>{showMesh ? 'Hide Face Mesh' : 'Face Mesh'}</span>
+              <ScanFace size={13} />
+              <span>{showMesh ? 'Hide Cranial Mesh' : 'Cranial Mesh'}</span>
             </button>
           )}
 
@@ -225,7 +229,7 @@ export const SplitCompareCanvas: React.FC<Props> = ({
               }}
               onPointerLeave={() => setHoldOriginal(false)}
             >
-              <Eye size={14} />
+              <Eye size={13} />
               <span>Hold Original</span>
             </button>
           )}
@@ -236,9 +240,9 @@ export const SplitCompareCanvas: React.FC<Props> = ({
           <div className="mirror-generating-overlay">
             <div className="scanner-laser-line" />
             <div className="generating-status-card">
-              <Sparkles size={20} className="spin-pulse" />
+              <Sparkles size={18} className="ember-icon" />
               <div>
-                <div className="generating-title">AI Master Barber Working…</div>
+                <div className="generating-title">Sculpting Hair &amp; Locking Identity</div>
                 <div className="generating-sub">{generationStatus}</div>
               </div>
             </div>

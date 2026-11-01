@@ -44,49 +44,48 @@ export async function downloadBarberReferenceCard(params: {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  // Obsidian studio canvas
-  ctx.fillStyle = '#09090B';
+  // Carbon Atelier Canvas
+  ctx.fillStyle = '#070708';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Subtle gold hairline frame
-  ctx.strokeStyle = 'rgba(212, 168, 83, 0.35)';
+  // Architectural hairline border
+  ctx.strokeStyle = 'rgba(245, 243, 239, 0.16)';
   ctx.lineWidth = 2;
-  roundRect(ctx, 28, 28, canvas.width - 56, canvas.height - 56, 28);
+  roundRect(ctx, 28, 28, canvas.width - 56, canvas.height - 56, 26);
   ctx.stroke();
 
-  // Top Header
-  ctx.fillStyle = '#D4A853';
-  ctx.font = '600 20px Inter, sans-serif';
-  ctx.fillText('CUTLAB AI · BARBERSHOP SPECIFICATION CARD', 68, 88);
+  // Top Telemetry Header
+  ctx.fillStyle = '#E8622A';
+  ctx.font = '700 18px "JetBrains Mono", monospace';
+  ctx.fillText('CUTLAB ATELIER // BARBER PRESCRIPTION TICKET', 68, 86);
 
-  ctx.fillStyle = '#F4F4F6';
-  ctx.font = '700 44px Inter, sans-serif';
-  ctx.fillText(look.title.slice(0, 38), 68, 146);
+  ctx.fillStyle = '#F5F3EF';
+  ctx.font = '800 44px "Plus Jakarta Sans", sans-serif';
+  ctx.fillText(look.title.slice(0, 38), 68, 144);
 
   if (faceAnalysis) {
-    ctx.fillStyle = '#9A9AA6';
-    ctx.font = '500 22px Inter, sans-serif';
+    ctx.fillStyle = '#2DD4BF';
+    ctx.font = '600 20px "JetBrains Mono", monospace';
     ctx.fillText(
-      `Face Shape: ${faceAnalysis.label}${
-        look.matchScore ? ` · ${look.matchScore}% Suitability Match` : ''
+      `CRANIAL SCAN: ${faceAnalysis.label.toUpperCase()}${
+        look.matchScore ? ` · ${look.matchScore}% SUITABILITY FIT` : ''
       }`,
       68,
-      184
+      182
     );
   }
 
-  // Main After Portrait + Inset Before Portrait
+  // Main After Portrait + Inset Original Portrait
   const imgX = 68;
   const imgY = 216;
   const mainSize = 780;
 
   ctx.save();
-  roundRect(ctx, imgX, imgY, mainSize, mainSize, 24);
+  roundRect(ctx, imgX, imgY, mainSize, mainSize, 22);
   ctx.clip();
   ctx.drawImage(afterImg, imgX, imgY, mainSize, mainSize);
   ctx.restore();
 
-  // Right-side Before Thumbnail + Quick Tag
   const sideX = 876;
   const sideSize = 256;
   ctx.save();
@@ -95,38 +94,38 @@ export async function downloadBarberReferenceCard(params: {
   ctx.drawImage(beforeImg, sideX, imgY, sideSize, sideSize);
   ctx.restore();
 
-  ctx.fillStyle = '#9A9AA6';
-  ctx.font = '600 18px Inter, sans-serif';
-  ctx.fillText('BEFORE (STARTING HAIR)', sideX, imgY + sideSize + 34);
+  ctx.fillStyle = '#A09FA8';
+  ctx.font = '600 16px "JetBrains Mono", monospace';
+  ctx.fillText('00 · BASELINE HAIR', sideX, imgY + sideSize + 34);
 
-  // Barber Clipper & Scissor Spec Grid at Bottom
+  // Clipper & Scissor Spec Ticket at Bottom
   const boxY = 1034;
-  ctx.fillStyle = '#121217';
+  ctx.fillStyle = '#111115';
   roundRect(ctx, 68, boxY, 1064, 418, 22);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = '#D4A853';
-  ctx.font = '700 19px Inter, sans-serif';
-  ctx.fillText('INSTRUCTIONS FOR YOUR BARBER', 104, boxY + 52);
+  ctx.fillStyle = '#E8622A';
+  ctx.font = '700 18px "JetBrains Mono", monospace';
+  ctx.fillText('CLIPPER & SCISSOR SPECIFICATIONS', 104, boxY + 52);
 
   const specs: [string, string][] = [
     ['SIDES & FADE', look.barberSpecs.sides],
     ['TOP & FRINGE', look.barberSpecs.top],
-    ['FACIAL HAIR / BEARD', look.barberSpecs.beard],
-    ['STYLING PRODUCT', look.barberSpecs.product],
+    ['FACIAL HAIR', look.barberSpecs.beard],
+    ['STYLING FINISH', look.barberSpecs.product],
   ];
 
   specs.forEach(([label, val], idx) => {
     const rowY = boxY + 112 + idx * 78;
-    ctx.fillStyle = '#8B8B98';
-    ctx.font = '600 17px Inter, sans-serif';
+    ctx.fillStyle = '#8A8994';
+    ctx.font = '600 16px "JetBrains Mono", monospace';
     ctx.fillText(label, 104, rowY);
 
-    ctx.fillStyle = '#F4F4F6';
-    ctx.font = '600 24px Inter, sans-serif';
+    ctx.fillStyle = '#F5F3EF';
+    ctx.font = '700 24px "Plus Jakarta Sans", sans-serif';
     ctx.fillText(val.slice(0, 62), 360, rowY);
   });
 
@@ -135,7 +134,7 @@ export async function downloadBarberReferenceCard(params: {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-  link.download = `cutlab-barber-card-${slug || 'haircut'}.png`;
+  link.download = `cutlab-atelier-spec-${slug || 'haircut'}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
 }

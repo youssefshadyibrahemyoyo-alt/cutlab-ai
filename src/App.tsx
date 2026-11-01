@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowUpRight,
   Camera,
   Columns2,
   Download,
@@ -8,15 +9,16 @@ import {
   KeyRound,
   Layers,
   MessageSquare,
+  Moon,
   RotateCcw,
   ScanFace,
   Scissors,
   Send,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Trash2,
   Upload,
-  UserCheck,
   X,
 } from 'lucide-react';
 import type {
@@ -44,12 +46,17 @@ import { downloadBarberReferenceCard } from './lib/barberCardExport';
 import { SplitCompareCanvas } from './components/SplitCompareCanvas';
 import { WebcamModal } from './components/WebcamModal';
 import { CompareGridModal } from './components/CompareGridModal';
+import { HaircutSilhouette } from './components/HaircutSilhouette';
+import { HeroShowcaseMirror } from './components/HeroShowcaseMirror';
 
 const GEMINI_KEY_STORAGE = 'cutlab_gemini_api_key_v1';
 const HF_TOKEN_STORAGE = 'cutlab_hf_token_v1';
+const THEME_STORAGE = 'cutlab_atelier_theme_v1';
+
+type StudioTheme = 'noir' | 'alabaster';
 
 const CATEGORY_TABS: { id: HaircutCategory; label: string }[] = [
-  { id: 'all', label: 'Top Matches' },
+  { id: 'all', label: 'Ranked Fits' },
   { id: 'fades', label: 'Fades & Crops' },
   { id: 'textured', label: 'Textured' },
   { id: 'curls_flow', label: 'Curls & Flow' },
@@ -57,10 +64,17 @@ const CATEGORY_TABS: { id: HaircutCategory; label: string }[] = [
 ];
 
 const QUICK_BARBER_PROMPTS = [
-  'Which 3 cuts suit my face shape best?',
-  'Give me a low taper with messy textured fringe',
-  'Try a #2 buzz cut with mid skin fade & 3mm stubble',
-  'Give me Old Money classic scissor flow',
+  'What top 3 cuts fit my jawline?',
+  'Low taper + messy textured fringe',
+  '#2 buzz cut + high skin fade',
+  'Old Money classic scissor flow',
+];
+
+const HERO_SIGNATURE_IDS = [
+  'french-crop-mid-drop',
+  'low-taper-textured-fringe',
+  'buzz-cut-mid-skin-fade',
+  'burst-fade-messy-curls',
 ];
 
 function uid(): string {
@@ -70,6 +84,17 @@ function uid(): string {
 export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Studio Theme ('noir' Carbon Atelier | 'alabaster' Aesop Stone)
+  const [theme, setTheme] = useState<StudioTheme>(() => {
+    const saved = localStorage.getItem(THEME_STORAGE);
+    return saved === 'alabaster' ? 'alabaster' : 'noir';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem(THEME_STORAGE, theme);
+  }, [theme]);
 
   // Portrait & Biometrics
   const [originalPhotoUrl, setOriginalPhotoUrl] = useState<string | null>(null);
@@ -92,6 +117,7 @@ export function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
 
   // Modals & Mobile Tabs
   const [showWebcam, setShowWebcam] = useState(false);
@@ -115,7 +141,7 @@ export function App() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "Welcome to CutLab Studio — I'm Marco, your AI Master Barber. Drop a portrait photo (or load the Studio Demo) and I'll scan your jawline & facial thirds, rank your highest-match cuts, and render any hairstyle directly on your photo.",
+        "I'm Marco, Master Barber at CutLab Atelier. Once your portrait is on the mirror, I'll read your jaw-to-cheekbone geometry and sculpt any cut directly onto your head while locking 100% of your real face.",
       createdAt: new Date().toISOString(),
     },
   ]);
@@ -147,20 +173,46 @@ export function App() {
     });
   };
 
-  const ingestPortrait = async (rawSourceUrl: string) => {
+  const ingestPortrait = async (
+    rawSourceUrl: string,
+    opts?: { preloadDemoCut?: boolean }
+  ) => {
     setErrorBanner(null);
     setIsScanningFace(true);
     try {
       const squareDataUrl = await normalizePortraitToSquare(rawSourceUrl);
       setOriginalPhotoUrl(squareDataUrl);
-      setLooks([]);
-      setActiveLookId(null);
-      setShowMesh(true);
 
       const analysis = await analyzePortraitFace(squareDataUrl);
       setFaceAnalysis(analysis);
 
-      // Compute top 3 cuts for this exact face shape
+      if (opts?.preloadDemoCut) {
+        const frenchPreset = HAIRCUT_PRESETS.find(
+          p => p.id === 'french-crop-mid-drop'
+        )!;
+        const fit = computeSuitabilityScore(frenchPreset, analysis.shape).score;
+        const demoLook: GeneratedLook = {
+          id: uid(),
+          title: frenchPreset.name,
+          imageUrl: '/demo-after.jpg',
+          sourceImageUrl: squareDataUrl,
+          createdAt: new Date().toISOString(),
+          presetId: frenchPreset.id,
+          barberSpecs: frenchPreset.barberSpecs,
+          isFavorite: true,
+          matchScore: fit,
+          promptUsed: frenchPreset.promptCore,
+          engineUsed: 'FaceLock Studio',
+        };
+        setLooks([demoLook]);
+        setActiveLookId(demoLook.id);
+      } else {
+        setLooks([]);
+        setActiveLookId(null);
+        setShowMesh(true);
+        setTimeout(() => setShowMesh(false), 2800);
+      }
+
       const topCuts = [...HAIRCUT_PRESETS]
         .map(p => ({ p, s: computeSuitabilityScore(p, analysis.shape).score }))
         .sort((a, b) => b.s - a.s)
@@ -170,14 +222,11 @@ export function App() {
         {
           id: uid(),
           role: 'assistant',
-          content: `Biometric scan locked: **${analysis.label} Face** (${analysis.jawDefinition} jawline, L/W ratio ${analysis.lengthToWidthRatio}). ${analysis.barberSummary}\n\nTap one of my top recommendations below or tell me any cut, guard length, or beard style you want to test.`,
+          content: `Cranial scan complete — **${analysis.label} Structure** (${analysis.jawDefinition} jaw, L/W ${analysis.lengthToWidthRatio}). ${analysis.barberSummary}`,
           suggestedPresetIds: topCuts.map(x => x.p.id),
           createdAt: new Date().toISOString(),
         },
       ]);
-
-      // Auto-hide mesh overlay after 3.2s so portrait stays crisp
-      setTimeout(() => setShowMesh(false), 3200);
     } catch (err) {
       setErrorBanner(
         err instanceof Error ? err.message : 'Failed reading portrait image.'
@@ -202,6 +251,7 @@ export function App() {
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    setDragActive(false);
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
@@ -286,7 +336,7 @@ export function App() {
       setErrorBanner(
         err instanceof Error
           ? err.message
-          : 'Haircut generation encountered a GPU queue error. Please try again.'
+          : 'Barber GPU queue busy — try again in a few seconds.'
       );
       return null;
     } finally {
@@ -316,7 +366,7 @@ export function App() {
         ? `Detected Face Shape: ${faceAnalysis.label} (${faceAnalysis.jawDefinition} jaw, Length/Width=${faceAnalysis.lengthToWidthRatio}, Jaw/Cheek=${faceAnalysis.jawToCheekRatio}, Forehead/Cheek=${faceAnalysis.foreheadToCheekRatio}). ${faceAnalysis.barberSummary}. Currently viewing cut: ${
             activeLook ? activeLook.title : 'Original Starting Hair'
           }.`
-        : 'User has not uploaded a photo yet — advise them warmly and invite them to upload or click Studio Demo.';
+        : 'User has not uploaded a photo yet — advise them warmly and invite them to upload or open the Demo Studio.';
 
       const agentRes = await askBarberAgent({
         messages: nextHistory.map(m => ({ role: m.role, content: m.content })),
@@ -340,7 +390,6 @@ export function App() {
       ]);
       scrollChatBottom();
 
-      // Automatically trigger live haircut render if the user has a portrait loaded and asked to try/change a look!
       if (agentRes.shouldGenerate && originalPhotoUrl && agentRes.imagePrompt) {
         const rendered = await executeHaircutGeneration({
           overrideTitle: agentRes.cutTitle,
@@ -364,8 +413,8 @@ export function App() {
           role: 'assistant',
           content:
             err instanceof Error
-              ? `Heads up: ${err.message}`
-              : 'My consultation line glitched briefly — try sending that again!',
+              ? `Note: ${err.message}`
+              : 'Consultation briefly interrupted — send that once more.',
           createdAt: new Date().toISOString(),
         },
       ]);
@@ -396,22 +445,19 @@ export function App() {
     const trimmedHf = draftHfToken.trim();
     setGeminiApiKey(trimmedGemini);
     setHfToken(trimmedHf);
-    if (trimmedGemini) {
-      localStorage.setItem(GEMINI_KEY_STORAGE, trimmedGemini);
-    } else {
-      localStorage.removeItem(GEMINI_KEY_STORAGE);
-    }
-    if (trimmedHf) {
-      localStorage.setItem(HF_TOKEN_STORAGE, trimmedHf);
-    } else {
-      localStorage.removeItem(HF_TOKEN_STORAGE);
-    }
+    if (trimmedGemini) localStorage.setItem(GEMINI_KEY_STORAGE, trimmedGemini);
+    else localStorage.removeItem(GEMINI_KEY_STORAGE);
+
+    if (trimmedHf) localStorage.setItem(HF_TOKEN_STORAGE, trimmedHf);
+    else localStorage.removeItem(HF_TOKEN_STORAGE);
+
     setShowSettingsModal(false);
   };
 
   return (
-    <div className="cutlab-shell">
-      {/* Hidden File Input */}
+    <div className="atelier-app">
+      <div className="ambient-grain" aria-hidden="true" />
+
       <input
         ref={fileInputRef}
         type="file"
@@ -420,103 +466,115 @@ export function App() {
         onChange={handleFileChange}
       />
 
-      {/* Top Studio Header */}
-      <header className="cutlab-topbar">
-        <div className="brand-cluster">
-          <div className="brand-mark">
-            <Scissors size={18} />
+      {/* Precision Atelier Header */}
+      <header className="atelier-header">
+        <div className="brand-lockup" onClick={() => setOriginalPhotoUrl(null)} style={{ cursor: 'pointer' }}>
+          <div className="brand-glyph">
+            <Scissors size={16} strokeWidth={2.2} />
           </div>
-          <div>
-            <div className="brand-title">CutLab AI</div>
-            <div className="brand-subtitle">Men’s Virtual Barber Studio</div>
+          <div className="brand-wordmark">
+            <span className="brand-name">CUTLAB</span>
+            <span className="brand-tag">ATELIER // 02</span>
           </div>
         </div>
 
-        <div className="topbar-center-controls">
-          {faceAnalysis && (
+        <div className="header-center-hud">
+          {originalPhotoUrl && faceAnalysis && (
             <button
               type="button"
-              className="biometric-status-pill"
+              className="cranial-hud-pill"
               onClick={() => setShowBiometricDrawer(v => !v)}
-              title="Click for full 3D facial ratio breakdown"
             >
-              <ScanFace size={15} />
+              <ScanFace size={14} className="teal-accent" />
               <span>
-                <strong>{faceAnalysis.label} Face</strong> · {faceAnalysis.jawDefinition}
+                <strong>{faceAnalysis.label}</strong> · {faceAnalysis.jawDefinition}
               </span>
-              <Info size={13} className="muted-icon" />
+              <span className="hud-ratio-chip">L/W {faceAnalysis.lengthToWidthRatio}</span>
+              <Info size={13} className="dim-icon" />
             </button>
           )}
 
           {originalPhotoUrl && looks.length > 0 && (
-            <div className="edit-mode-segmented" title="Choose whether new edits apply to your original photo or stack onto the current haircut">
+            <div className="segmented-switch" title="Apply new cuts to starting photo or refine current look">
               <button
                 type="button"
-                className={editSourceMode === 'original' ? 'active' : ''}
+                className={editSourceMode === 'original' ? 'on' : ''}
                 onClick={() => setEditSourceMode('original')}
               >
-                From Original
+                Original Base
               </button>
               <button
                 type="button"
-                className={editSourceMode === 'chain' ? 'active' : ''}
+                className={editSourceMode === 'chain' ? 'on' : ''}
                 onClick={() => setEditSourceMode('chain')}
               >
-                <Layers size={13} />
-                Refine Current
+                <Layers size={12} />
+                Refine Stack
               </button>
             </div>
           )}
         </div>
 
-        <div className="topbar-actions">
+        <div className="header-right-controls">
           {originalPhotoUrl && (
             <button
               type="button"
-              className="topbar-btn"
+              className="atelier-nav-btn"
               onClick={() => fileInputRef.current?.click()}
-              title="Upload a different portrait"
             >
-              <Upload size={15} />
-              <span className="hide-sm">New Photo</span>
+              <Upload size={14} />
+              <span className="hide-sm">Change Photo</span>
             </button>
           )}
 
           {looks.length > 0 && (
             <button
               type="button"
-              className="topbar-btn highlight"
+              className="atelier-nav-btn ember-outline"
               onClick={() => setShowCompareGrid(true)}
             >
-              <Columns2 size={15} />
-              <span>Compare ({looks.length})</span>
+              <Columns2 size={14} />
+              <span>Showdown ({looks.length})</span>
             </button>
           )}
 
           <button
             type="button"
-            className="topbar-btn"
+            className="atelier-icon-btn"
+            onClick={() => setTheme(t => (t === 'noir' ? 'alabaster' : 'noir'))}
+            title={
+              theme === 'noir'
+                ? 'Switch to Alabaster Salon (Light Theme)'
+                : 'Switch to Noir Atelier (Dark Theme)'
+            }
+          >
+            {theme === 'noir' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+
+          <button
+            type="button"
+            className="atelier-nav-btn"
             onClick={() => {
               setDraftGeminiKey(geminiApiKey);
               setDraftHfToken(hfToken);
               setShowSettingsModal(true);
             }}
-            title="AI Engine Settings (Free Built-In + Optional Pro Key)"
           >
-            <KeyRound size={15} />
+            <KeyRound size={14} />
             <span className="hide-sm">
-              {geminiApiKey || hfToken ? 'Pro Boost Active' : 'FaceLock GPU Ready'}
+              {geminiApiKey || hfToken ? 'Pro Boost' : 'Engine'}
             </span>
           </button>
         </div>
       </header>
 
-      {/* Expandable Biometric Face Breakdown Popover */}
+      {/* Cranial Biometric Popover */}
       {showBiometricDrawer && faceAnalysis && (
-        <div className="biometric-Popover">
-          <div className="biometric-popover-head">
+        <div className="cranial-popover">
+          <div className="cranial-popover-top">
             <div>
-              <h4>3D Facial Proportion Report — {faceAnalysis.label} Structure</h4>
+              <span className="mono-eyebrow">478-LANDMARK CRANIAL TELEMETRY</span>
+              <h4>{faceAnalysis.label} Bone Structure</h4>
               <p>{faceAnalysis.barberSummary}</p>
             </div>
             <button
@@ -524,530 +582,591 @@ export function App() {
               className="icon-close-btn"
               onClick={() => setShowBiometricDrawer(false)}
             >
-              <X size={16} />
+              <X size={15} />
             </button>
           </div>
-          <div className="biometric-metrics-row">
-            <div className="bio-stat">
-              <span>Length / Width</span>
+          <div className="cranial-stats-grid">
+            <div className="cranial-stat-card">
+              <span>LENGTH / WIDTH</span>
               <strong>{faceAnalysis.lengthToWidthRatio}</strong>
             </div>
-            <div className="bio-stat">
-              <span>Jaw / Cheekbone</span>
+            <div className="cranial-stat-card">
+              <span>JAW / CHEEK</span>
               <strong>{faceAnalysis.jawToCheekRatio}</strong>
             </div>
-            <div className="bio-stat">
-              <span>Forehead / Cheek</span>
+            <div className="cranial-stat-card">
+              <span>BROW / CHEEK</span>
               <strong>{faceAnalysis.foreheadToCheekRatio}</strong>
             </div>
-            <div className="bio-stat">
-              <span>Facial Thirds</span>
+            <div className="cranial-stat-card">
+              <span>FACIAL THIRDS</span>
               <strong>
-                {faceAnalysis.upperThirdPct}% · {faceAnalysis.middleThirdPct}% ·{' '}
+                {faceAnalysis.upperThirdPct}·{faceAnalysis.middleThirdPct}·
                 {faceAnalysis.lowerThirdPct}%
               </strong>
             </div>
           </div>
-          <div className="bio-caution-note">
-            <strong>Barber Watchout:</strong> {faceAnalysis.avoidNote}
+          <div className="cranial-watchout">
+            <span>BARBER NOTE:</span> {faceAnalysis.avoidNote}
           </div>
         </div>
       )}
 
-      {/* Main 3-Column Studio Workspace */}
-      <main className="studio-grid">
-        {/* LEFT COLUMN: Barbershop Haircut Catalog & Modifiers */}
-        <aside
-          className={`studio-panel catalog-panel ${
-            mobilePanel === 'cuts' ? 'mobile-visible' : ''
-          }`}
-        >
-          <div className="panel-header-row">
-            <div>
-              <h2>Barbershop Cuts</h2>
-              <p>
-                {faceAnalysis
-                  ? `Ranked for your ${faceAnalysis.label} bone structure`
-                  : '16 signature men’s cuts with guard specs'}
+      {/* STAGE 1: Editorial Landing & Intake (when no portrait loaded yet) */}
+      {!originalPhotoUrl ? (
+        <main className="editorial-landing">
+          <div className="editorial-hero-grid">
+            <div className="hero-copy-col">
+              <div className="hero-eyebrow-pill">
+                <span className="ember-dot" />
+                <span>BIOMETRIC MEN’S BARBER ATELIER · ZERO IDENTITY DRIFT</span>
+              </div>
+
+              <h1 className="hero-display-title">
+                Preview every cut on <em>your actual face</em> before the clippers touch.
+              </h1>
+
+              <p className="hero-lead-copy">
+                CutLab maps 478 3D cranial landmarks to rank 16 signature barbershop
+                cuts for your jawline, sculpts realistic fades &amp; fringes onto your
+                portrait, and prints an exact Guard Spec Card for your barber.
               </p>
-            </div>
-            <button
-              type="button"
-              className={`modifier-toggle-btn ${
-                showModifiers ||
-                fade !== 'preset_default' ||
-                beard !== 'keep_current' ||
-                hairColor !== 'natural'
-                  ? 'active'
-                  : ''
-              }`}
-              onClick={() => setShowModifiers(v => !v)}
-            >
-              <SlidersHorizontal size={14} />
-              <span>Customize</span>
-            </button>
-          </div>
 
-          {/* Collapsible Fade / Beard / Color Fine-Tuning */}
-          {showModifiers && (
-            <div className="modifiers-drawer">
-              <div className="mod-group">
-                <label>Side Fade Override</label>
-                <div className="mod-chips">
-                  {FADE_OPTIONS.map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`mod-chip ${fade === opt.id ? 'selected' : ''}`}
-                      onClick={() => setFade(opt.id)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mod-group">
-                <label>Beard &amp; Stubble</label>
-                <div className="mod-chips">
-                  {BEARD_OPTIONS.map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      className={`mod-chip ${beard === opt.id ? 'selected' : ''}`}
-                      onClick={() => setBeard(opt.id)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mod-group">
-                <label>Hair Color</label>
-                <div className="color-swatches-row">
-                  {HAIR_COLOR_OPTIONS.map(c => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={`color-swatch-pill ${
-                        hairColor === c.id ? 'selected' : ''
-                      }`}
-                      onClick={() => setHairColor(c.id)}
-                    >
-                      <span
-                        className="swatch-dot"
-                        style={{ background: c.swatch }}
-                      />
-                      <span>{c.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Category Filter Bar */}
-          <div className="category-scroll-bar">
-            {CATEGORY_TABS.map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`cat-pill ${category === tab.id ? 'active' : ''}`}
-                onClick={() => setCategory(tab.id)}
+              {/* Viewfinder Drop & Action Card */}
+              <div
+                className={`hero-intake-deck ${dragActive ? 'drag-over' : ''}`}
+                onDragOver={e => {
+                  e.preventDefault();
+                  setDragActive(true);
+                }}
+                onDragLeave={() => setDragActive(false)}
+                onDrop={handleDrop}
               >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Ranked Preset Cards */}
-          <div className="presets-list">
-            {rankedPresets.map(({ preset, suitability }) => {
-              const isCurrent = activeLook?.presetId === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  disabled={isGenerating}
-                  className={`preset-card ${isCurrent ? 'active-preset' : ''}`}
-                  onClick={() => {
-                    if (!originalPhotoUrl) {
-                      ingestPortrait('/demo-portrait.jpg');
-                      return;
-                    }
-                    executeHaircutGeneration({ preset });
-                  }}
-                >
-                  <div className="preset-card-top">
-                    <span className="preset-name">{preset.name}</span>
-                    <span
-                      className={`match-pill ${
-                        suitability.score >= 92 ? 'ideal' : ''
-                      }`}
-                    >
-                      {faceAnalysis ? `${suitability.score}% Fit` : preset.maintenance}
-                    </span>
-                  </div>
-                  <p className="preset-tagline">{preset.tagline}</p>
-                  <div className="preset-guard-meta">
-                    <span>{preset.barberSpecs.sides}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* CENTER COLUMN: Interactive Barber Mirror & Lookbook */}
-        <section
-          className={`studio-center ${
-            mobilePanel === 'mirror' ? 'mobile-visible' : ''
-          }`}
-        >
-          {errorBanner && (
-            <div className="studio-error-banner">
-              <span>{errorBanner}</span>
-              <button type="button" onClick={() => setErrorBanner(null)}>
-                <X size={15} />
-              </button>
-            </div>
-          )}
-
-          {!originalPhotoUrl ? (
-            <div
-              className="intake-dropzone"
-              onDragOver={e => e.preventDefault()}
-              onDrop={handleDrop}
-            >
-              <div className="intake-emblem">
-                <Scissors size={28} />
-              </div>
-              <h1>Find the Haircut Built for Your Face</h1>
-              <p className="intake-lead">
-                Upload a front-facing photo or snap a live selfie. CutLab scans your
-                jawline &amp; facial proportions, lets you try unlimited fades, crops,
-                curls &amp; beards with real AI, and prints a Guard Spec Card for your
-                barber.
-              </p>
-
-              <div className="intake-cta-row">
-                <button
-                  type="button"
-                  className="gold-primary-btn lg"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={17} />
-                  <span>Upload Your Photo</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="secondary-studio-btn lg"
-                  onClick={() => setShowWebcam(true)}
-                >
-                  <Camera size={17} />
-                  <span>Use Camera</span>
-                </button>
-
-                <button
-                  type="button"
-                  className="demo-portrait-btn lg"
-                  onClick={() => ingestPortrait('/demo-portrait.jpg')}
-                >
-                  <UserCheck size={17} />
-                  <span>Try Studio Demo</span>
-                </button>
-              </div>
-
-              <div className="intake-trust-note">
-                100% Free out of the box · Preserves your exact facial identity · Drag &amp; drop supported
-              </div>
-            </div>
-          ) : (
-            <>
-              <SplitCompareCanvas
-                originalPhotoUrl={originalPhotoUrl}
-                activeLook={activeLook}
-                faceAnalysis={faceAnalysis}
-                showMesh={showMesh || isScanningFace}
-                onToggleMesh={() => setShowMesh(v => !v)}
-                isGenerating={isGenerating}
-                generationStatus={generationStatus}
-              />
-
-              {/* Active Cut Spec Bar + Export Barber Card */}
-              {activeLook ? (
-                <div className="active-spec-bar">
-                  <div className="spec-bar-main">
-                    <div className="spec-bar-title-row">
-                      <h3>{activeLook.title}</h3>
-                      {activeLook.matchScore && (
-                        <span className="match-pill ideal">
-                          {activeLook.matchScore}% Face Match
-                        </span>
-                      )}
-                    </div>
-                    <div className="spec-bar-guards">
-                      <span>
-                        <strong>Sides:</strong> {activeLook.barberSpecs.sides}
-                      </span>
-                      <span>
-                        <strong>Top:</strong> {activeLook.barberSpecs.top}
-                      </span>
-                      <span>
-                        <strong>Beard:</strong> {activeLook.barberSpecs.beard}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="spec-bar-actions">
-                    <button
-                      type="button"
-                      className={`icon-action-btn ${
-                        activeLook.isFavorite ? 'fav-active' : ''
-                      }`}
-                      onClick={() => toggleFavorite(activeLook.id)}
-                      title="Save to Favorites"
-                    >
-                      <Heart
-                        size={16}
-                        fill={activeLook.isFavorite ? 'currentColor' : 'none'}
-                      />
-                    </button>
-
-                    <button
-                      type="button"
-                      className="gold-primary-btn"
-                      onClick={() =>
-                        downloadBarberReferenceCard({
-                          look: activeLook,
-                          originalPhotoUrl,
-                          faceAnalysis,
-                        })
-                      }
-                    >
-                      <Download size={15} />
-                      <span>Show My Barber Card</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="active-spec-bar prompt-hint-bar">
-                  <div>
-                    <strong>Ready to style:</strong> Pick any cut on the left or ask
-                    Marco on the right to preview your first transformation.
-                  </div>
+                <div className="intake-primary-actions">
                   <button
                     type="button"
-                    className="secondary-studio-btn"
+                    className="btn-atelier-primary"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload size={16} />
+                    <span>Upload Your Portrait</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-atelier-surface"
                     onClick={() => setShowWebcam(true)}
                   >
-                    <Camera size={14} />
-                    <span>Retake Camera</span>
+                    <Camera size={16} />
+                    <span>Mirror Camera</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-atelier-ember-ghost"
+                    onClick={() =>
+                      ingestPortrait('/demo-portrait.jpg', { preloadDemoCut: true })
+                    }
+                  >
+                    <span>Try Demo Model</span>
+                    <ArrowUpRight size={15} />
                   </button>
                 </div>
-              )}
 
-              {/* Lookbook Filmstrip */}
-              <div className="lookbook-strip">
-                <button
-                  type="button"
-                  className={`film-thumb ${activeLookId === null ? 'selected' : ''}`}
-                  onClick={() => setActiveLookId(null)}
-                >
-                  <img src={originalPhotoUrl} alt="Original hair" />
-                  <span>Original</span>
-                </button>
-
-                {looks.map(look => (
-                  <div
-                    key={look.id}
-                    className={`film-thumb ${
-                      activeLookId === look.id ? 'selected' : ''
-                    }`}
-                    onClick={() => setActiveLookId(look.id)}
-                  >
-                    <img src={look.imageUrl} alt={look.title} />
-                    <span>{look.title}</span>
-                    <button
-                      type="button"
-                      className="thumb-delete"
-                      title="Remove look"
-                      onClick={e => {
-                        e.stopPropagation();
-                        deleteLook(look.id);
-                      }}
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                ))}
+                <div className="intake-sub-caption">
+                  Drag &amp; drop any front-facing selfie · Works 100% free out of the box ·{' '}
+                  <strong>478-Point FaceLock</strong> keeps your real eyes &amp; face untouched
+                </div>
               </div>
-            </>
-          )}
-        </section>
 
-        {/* RIGHT COLUMN: Conversational AI Master Barber Agent */}
-        <aside
-          className={`studio-panel barber-chat-panel ${
-            mobilePanel === 'barber' ? 'mobile-visible' : ''
-          }`}
-        >
-          <div className="panel-header-row">
-            <div className="barber-persona">
-              <div className="persona-avatar">
-                <Sparkles size={15} />
-              </div>
-              <div>
-                <h2>Marco · AI Barber</h2>
-                <p>Consultation + Live Hair Sculpting</p>
+              {/* Signature Cut Preview Strip */}
+              <div className="hero-signature-strip">
+                <div className="strip-label">POPULAR STUDIO PRESETS — CLICK TO TEST</div>
+                <div className="signature-mini-grid">
+                  {HERO_SIGNATURE_IDS.map(id => {
+                    const p = HAIRCUT_PRESETS.find(x => x.id === id)!;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className="signature-mini-card"
+                        onClick={() =>
+                          ingestPortrait('/demo-portrait.jpg', { preloadDemoCut: true })
+                        }
+                      >
+                        <div className="mini-silhouette-box">
+                          <HaircutSilhouette presetId={p.id} />
+                        </div>
+                        <div className="mini-card-meta">
+                          <strong>{p.name.split('+')[0].trim()}</strong>
+                          <span>{p.barberSpecs.sides.split('(')[0].trim()}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-            {looks.length > 0 && (
+
+            {/* Right Column: Live Interactive 60fps Draggable Salon Mirror */}
+            <div className="hero-visual-col">
+              <HeroShowcaseMirror
+                onLaunchDemo={() =>
+                  ingestPortrait('/demo-portrait.jpg', { preloadDemoCut: true })
+                }
+              />
+            </div>
+          </div>
+        </main>
+      ) : (
+        /* STAGE 2: Full Interactive 3-Zone Atelier Studio */
+        <main className="studio-workspace">
+          {/* LEFT ZONE: Visual Cut Catalog & Clipper Modifiers */}
+          <aside
+            className={`atelier-column catalog-col ${
+              mobilePanel === 'cuts' ? 'mob-active' : ''
+            }`}
+          >
+            <div className="col-head">
+              <div>
+                <span className="mono-eyebrow">16 SIGNATURE CUTS</span>
+                <h2>Style Index</h2>
+              </div>
+
               <button
                 type="button"
-                className="reset-chat-btn"
-                title="View original starting hair"
+                className={`tuner-pill-btn ${
+                  showModifiers ||
+                  fade !== 'preset_default' ||
+                  beard !== 'keep_current' ||
+                  hairColor !== 'natural'
+                    ? 'active'
+                    : ''
+                }`}
+                onClick={() => setShowModifiers(v => !v)}
+              >
+                <SlidersHorizontal size={13} />
+                <span>Clipper &amp; Dye</span>
+              </button>
+            </div>
+
+            {showModifiers && (
+              <div className="clipper-tuner-drawer">
+                <div className="tuner-section">
+                  <label>SIDE FADE OVERRIDE</label>
+                  <div className="tuner-chip-grid">
+                    {FADE_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`tuner-chip ${fade === opt.id ? 'on' : ''}`}
+                        onClick={() => setFade(opt.id)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="tuner-section">
+                  <label>FACIAL HAIR</label>
+                  <div className="tuner-chip-grid">
+                    {BEARD_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        className={`tuner-chip ${beard === opt.id ? 'on' : ''}`}
+                        onClick={() => setBeard(opt.id)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="tuner-section">
+                  <label>TONE / DYE</label>
+                  <div className="tuner-chip-grid">
+                    {HAIR_COLOR_OPTIONS.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`tuner-chip swatch-chip ${
+                          hairColor === c.id ? 'on' : ''
+                        }`}
+                        onClick={() => setHairColor(c.id)}
+                      >
+                        <span
+                          className="color-dot"
+                          style={{ background: c.swatch }}
+                        />
+                        <span>{c.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="cat-filter-strip">
+              {CATEGORY_TABS.map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`cat-tab ${category === tab.id ? 'on' : ''}`}
+                  onClick={() => setCategory(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="visual-cuts-scroll">
+              {rankedPresets.map(({ preset, suitability }) => {
+                const isSelected = activeLook?.presetId === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    disabled={isGenerating}
+                    className={`visual-cut-card ${isSelected ? 'selected' : ''}`}
+                    onClick={() => executeHaircutGeneration({ preset })}
+                  >
+                    <div className="cut-avatar-frame">
+                      <HaircutSilhouette presetId={preset.id} />
+                    </div>
+
+                    <div className="cut-card-info">
+                      <div className="cut-card-title-row">
+                        <span className="cut-title">{preset.name}</span>
+                        <span
+                          className={`fit-score-badge ${
+                            suitability.score >= 92 ? 'prime' : ''
+                          }`}
+                        >
+                          {faceAnalysis ? `${suitability.score}%` : preset.maintenance}
+                        </span>
+                      </div>
+
+                      <p className="cut-desc">{preset.tagline}</p>
+
+                      <div className="cut-spec-foot">
+                        <span className="guard-code">{preset.barberSpecs.sides}</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          {/* CENTER ZONE: Illuminated Salon Mirror & Spec Ticket */}
+          <section
+            className={`atelier-stage-col ${
+              mobilePanel === 'mirror' ? 'mob-active' : ''
+            }`}
+          >
+            {errorBanner && (
+              <div className="atelier-alert">
+                <span>{errorBanner}</span>
+                <button type="button" onClick={() => setErrorBanner(null)}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            <SplitCompareCanvas
+              originalPhotoUrl={originalPhotoUrl}
+              activeLook={activeLook}
+              faceAnalysis={faceAnalysis}
+              showMesh={showMesh || isScanningFace}
+              onToggleMesh={() => setShowMesh(v => !v)}
+              isGenerating={isGenerating}
+              generationStatus={generationStatus}
+            />
+
+            {/* Precision Barber Prescription Dock */}
+            {activeLook ? (
+              <div className="prescription-dock">
+                <div className="prescription-details">
+                  <div className="prescription-head">
+                    <h3>{activeLook.title}</h3>
+                    {activeLook.matchScore && (
+                      <span className="fit-score-badge prime">
+                        {activeLook.matchScore}% CRANIAL MATCH
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="prescription-specs-grid">
+                    <div>
+                      <span>SIDES</span>
+                      <strong>{activeLook.barberSpecs.sides}</strong>
+                    </div>
+                    <div>
+                      <span>TOP</span>
+                      <strong>{activeLook.barberSpecs.top}</strong>
+                    </div>
+                    <div>
+                      <span>STYLING</span>
+                      <strong>{activeLook.barberSpecs.product}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="prescription-cta-group">
+                  <button
+                    type="button"
+                    className={`atelier-icon-btn lg ${
+                      activeLook.isFavorite ? 'hearted' : ''
+                    }`}
+                    onClick={() => toggleFavorite(activeLook.id)}
+                    title="Favorite Look"
+                  >
+                    <Heart
+                      size={16}
+                      fill={activeLook.isFavorite ? 'currentColor' : 'none'}
+                    />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-atelier-primary"
+                    onClick={() =>
+                      downloadBarberReferenceCard({
+                        look: activeLook,
+                        originalPhotoUrl,
+                        faceAnalysis,
+                      })
+                    }
+                  >
+                    <Download size={15} />
+                    <span>Barber Spec Card</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="prescription-dock idle-dock">
+                <div>
+                  <span className="mono-eyebrow">READY ON THE CHAIR</span>
+                  <p>
+                    Select any cut from the <strong>Style Index</strong> or tell{' '}
+                    <strong>Marco</strong> how you want your sides &amp; top styled.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-atelier-surface"
+                  onClick={() => setShowWebcam(true)}
+                >
+                  <Camera size={14} />
+                  <span>Retake Selfie</span>
+                </button>
+              </div>
+            )}
+
+            {/* Contact-Sheet Lookbook Strip */}
+            <div className="contact-sheet-strip">
+              <button
+                type="button"
+                className={`contact-frame ${activeLookId === null ? 'active' : ''}`}
                 onClick={() => setActiveLookId(null)}
               >
-                <RotateCcw size={14} />
+                <img src={originalPhotoUrl} alt="Original" />
+                <span>00 · BASE</span>
               </button>
-            )}
-          </div>
 
-          <div className="chat-messages-scroll">
-            {chatMessages.map(msg => (
-              <div key={msg.id} className={`chat-bubble-row ${msg.role}`}>
-                <div className="chat-bubble">
-                  <p className="chat-text">{msg.content}</p>
-
-                  {msg.suggestedPresetIds && msg.suggestedPresetIds.length > 0 && (
-                    <div className="chat-suggested-cuts">
-                      {msg.suggestedPresetIds.map(pid => {
-                        const preset = HAIRCUT_PRESETS.find(x => x.id === pid);
-                        if (!preset) return null;
-                        const fit = computeSuitabilityScore(
-                          preset,
-                          faceAnalysis?.shape ?? null
-                        );
-                        return (
-                          <button
-                            key={pid}
-                            type="button"
-                            disabled={isGenerating}
-                            className="chat-cut-chip"
-                            onClick={() => executeHaircutGeneration({ preset })}
-                          >
-                            <Scissors size={12} />
-                            <span>
-                              Try {preset.name} ({fit.score}%)
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {msg.triggeredLookId && (
-                    <button
-                      type="button"
-                      className="chat-view-look-chip"
-                      onClick={() => {
-                        setActiveLookId(msg.triggeredLookId || null);
-                        setMobilePanel('mirror');
-                      }}
-                    >
-                      <Sparkles size={12} />
-                      <span>Applied to Mirror — Click to Inspect</span>
-                    </button>
-                  )}
+              {looks.map((look, index) => (
+                <div
+                  key={look.id}
+                  className={`contact-frame ${
+                    activeLookId === look.id ? 'active' : ''
+                  }`}
+                  onClick={() => setActiveLookId(look.id)}
+                >
+                  <img src={look.imageUrl} alt={look.title} />
+                  <span>
+                    {String(looks.length - index).padStart(2, '0')} · {look.title}
+                  </span>
+                  <button
+                    type="button"
+                    className="contact-remove"
+                    title="Delete frame"
+                    onClick={e => {
+                      e.stopPropagation();
+                      deleteLook(look.id);
+                    }}
+                  >
+                    <Trash2 size={11} />
+                  </button>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </section>
 
-            {isAgentThinking && (
-              <div className="chat-bubble-row assistant">
-                <div className="chat-bubble thinking-bubble">
-                  <span>Marco is sizing up your proportions…</span>
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-
-          <div className="quick-prompts-strip">
-            {QUICK_BARBER_PROMPTS.map(q => (
-              <button
-                key={q}
-                type="button"
-                disabled={isAgentThinking || isGenerating}
-                className="quick-prompt-chip"
-                onClick={() => handleSendChat(q)}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
-
-          <form
-            className="chat-composer"
-            onSubmit={e => {
-              e.preventDefault();
-              handleSendChat();
-            }}
+          {/* RIGHT ZONE: Marco AI Master Barber Concierge */}
+          <aside
+            className={`atelier-column concierge-col ${
+              mobilePanel === 'barber' ? 'mob-active' : ''
+            }`}
           >
-            <input
-              type="text"
-              placeholder={
-                originalPhotoUrl
-                  ? 'Ask Marco or describe any haircut (“burst fade curls + 3mm stubble”)…'
-                  : 'Ask Marco for advice or upload a photo first…'
-              }
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={!chatInput.trim() || isAgentThinking}
-              className="chat-send-btn"
-              aria-label="Send message"
+            <div className="col-head">
+              <div className="concierge-id">
+                <div className="concierge-badge">
+                  <Sparkles size={14} />
+                </div>
+                <div>
+                  <span className="mono-eyebrow">LIVE CONSULTATION</span>
+                  <h2>Marco · Master Barber</h2>
+                </div>
+              </div>
+
+              {looks.length > 0 && (
+                <button
+                  type="button"
+                  className="atelier-icon-btn"
+                  title="Reset mirror to original hair"
+                  onClick={() => setActiveLookId(null)}
+                >
+                  <RotateCcw size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="concierge-feed">
+              {chatMessages.map(msg => (
+                <div key={msg.id} className={`msg-row ${msg.role}`}>
+                  <div className="msg-card">
+                    <p className="msg-body">{msg.content}</p>
+
+                    {msg.suggestedPresetIds && msg.suggestedPresetIds.length > 0 && (
+                      <div className="msg-prescription-list">
+                        {msg.suggestedPresetIds.map(pid => {
+                          const preset = HAIRCUT_PRESETS.find(x => x.id === pid);
+                          if (!preset) return null;
+                          const fit = computeSuitabilityScore(
+                            preset,
+                            faceAnalysis?.shape ?? null
+                          );
+                          return (
+                            <button
+                              key={pid}
+                              type="button"
+                              disabled={isGenerating}
+                              className="prescription-action-ticket"
+                              onClick={() => executeHaircutGeneration({ preset })}
+                            >
+                              <div className="ticket-avatar">
+                                <HaircutSilhouette presetId={preset.id} />
+                              </div>
+                              <div className="ticket-meta">
+                                <strong>{preset.name}</strong>
+                                <span>{preset.barberSpecs.sides}</span>
+                              </div>
+                              <span className="ticket-fit">{fit.score}%</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {msg.triggeredLookId && (
+                      <button
+                        type="button"
+                        className="applied-mirror-badge"
+                        onClick={() => {
+                          setActiveLookId(msg.triggeredLookId || null);
+                          setMobilePanel('mirror');
+                        }}
+                      >
+                        <Sparkles size={12} />
+                        <span>Rendered on Mirror — Inspect Look</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {isAgentThinking && (
+                <div className="msg-row assistant">
+                  <div className="msg-card pulsing-msg">
+                    Assessing cranial proportions &amp; clipper guards…
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="prompt-pills-bar">
+              {QUICK_BARBER_PROMPTS.map(q => (
+                <button
+                  key={q}
+                  type="button"
+                  disabled={isAgentThinking || isGenerating}
+                  className="prompt-suggestion"
+                  onClick={() => handleSendChat(q)}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+
+            <form
+              className="concierge-input-bar"
+              onSubmit={e => {
+                e.preventDefault();
+                handleSendChat();
+              }}
             >
-              <Send size={15} />
-            </button>
-          </form>
-        </aside>
-      </main>
+              <input
+                type="text"
+                placeholder="Describe any cut, fade height, or beard tweak…"
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={!chatInput.trim() || isAgentThinking}
+                className="send-ember-btn"
+                aria-label="Send"
+              >
+                <Send size={14} />
+              </button>
+            </form>
+          </aside>
+        </main>
+      )}
 
-      {/* Mobile Studio Bottom Tab Switcher */}
-      <nav className="mobile-studio-dock">
-        <button
-          type="button"
-          className={mobilePanel === 'cuts' ? 'active' : ''}
-          onClick={() => setMobilePanel('cuts')}
-        >
-          <Scissors size={17} />
-          <span>Cuts</span>
-        </button>
-        <button
-          type="button"
-          className={mobilePanel === 'mirror' ? 'active' : ''}
-          onClick={() => setMobilePanel('mirror')}
-        >
-          <ScanFace size={17} />
-          <span>Mirror</span>
-        </button>
-        <button
-          type="button"
-          className={mobilePanel === 'barber' ? 'active' : ''}
-          onClick={() => setMobilePanel('barber')}
-        >
-          <MessageSquare size={17} />
-          <span>AI Barber</span>
-        </button>
-      </nav>
+      {/* Mobile Bottom Dock (only when portrait is loaded on mobile) */}
+      {originalPhotoUrl && (
+        <nav className="mobile-atelier-dock">
+          <button
+            type="button"
+            className={mobilePanel === 'cuts' ? 'on' : ''}
+            onClick={() => setMobilePanel('cuts')}
+          >
+            <Scissors size={16} />
+            <span>Style Index</span>
+          </button>
+          <button
+            type="button"
+            className={mobilePanel === 'mirror' ? 'on' : ''}
+            onClick={() => setMobilePanel('mirror')}
+          >
+            <ScanFace size={16} />
+            <span>Mirror</span>
+          </button>
+          <button
+            type="button"
+            className={mobilePanel === 'barber' ? 'on' : ''}
+            onClick={() => setMobilePanel('barber')}
+          >
+            <MessageSquare size={16} />
+            <span>Marco AI</span>
+          </button>
+        </nav>
+      )}
 
-      {/* Live Webcam Modal */}
       {showWebcam && (
         <WebcamModal
           onCapture={dataUrl => {
@@ -1058,7 +1177,6 @@ export function App() {
         />
       )}
 
-      {/* Side-by-Side Winner Showdown Modal */}
       {showCompareGrid && originalPhotoUrl && (
         <CompareGridModal
           looks={looks}
@@ -1071,7 +1189,6 @@ export function App() {
         />
       )}
 
-      {/* Engine Settings Modal (Zero-Key Default + Optional BYOK Gemini Pro) */}
       {showSettingsModal && (
         <div
           className="studio-modal-backdrop"
@@ -1083,43 +1200,40 @@ export function App() {
           >
             <div className="studio-modal-header">
               <div>
-                <h3>AI Barber Engine Settings</h3>
-                <p>CutLab works 100% free out-of-the-box — no paid key needed</p>
+                <span className="mono-eyebrow">RENDER PIPELINE</span>
+                <h3>Atelier Engine Configuration</h3>
               </div>
               <button
                 type="button"
                 className="icon-close-btn"
                 onClick={() => setShowSettingsModal(false)}
               >
-                <X size={18} />
+                <X size={17} />
               </button>
             </div>
 
             <div className="settings-body">
               <div className="engine-status-box">
-                <div>
-                  <strong>478-Landmark Biometric FaceLock + Multi-GPU Cascade (Active)</strong>
-                  <p>
-                    Aligns every generated haircut onto your exact eye/nose coordinates
-                    via Procrustes warping, matches forehead skin luminance, and restores
-                    100% of your real facial features so it never replaces you with
-                    another person.
-                  </p>
-                </div>
+                <strong>478-Landmark Biometric FaceLock + Multi-GPU Cascade</strong>
+                <p>
+                  Every render aligns hair &amp; temple fades onto your exact ocular
+                  coordinates and restores 100% of your real face so it never
+                  replaces you with a stranger.
+                </p>
               </div>
 
               <label className="settings-field-label">
-                Optional Free Hugging Face Token (25× More Free GPU Quota)
+                Optional Free Hugging Face Token (25× Priority GPU Quota)
                 <input
                   type="password"
-                  placeholder="hf_... (optional — from huggingface.co/settings/tokens)"
+                  placeholder="hf_... (optional — huggingface.co/settings/tokens)"
                   value={draftHfToken}
                   onChange={e => setDraftHfToken(e.target.value)}
                 />
               </label>
 
               <label className="settings-field-label">
-                Optional Google Gemini API Key (Pro Multimodal Studio)
+                Optional Google Gemini API Key (Gemini Pro Multimodal Studio)
                 <input
                   type="password"
                   placeholder="AIzaSy... (optional — leave blank for free built-in GPUs)"
@@ -1128,29 +1242,28 @@ export function App() {
                 />
               </label>
               <p className="settings-help-note">
-                Keys stay strictly in your browser’s <code>localStorage</code>. Adding a
-                free Hugging Face read token or Google AI Studio key unlocks extended
-                ZeroGPU H200 priority runs and Gemini 2.5 Flash multimodal editing.
+                Stored locally in your browser only. Works out-of-the-box with zero
+                keys required.
               </p>
             </div>
 
             <div className="webcam-footer">
               <button
                 type="button"
-                className="secondary-studio-btn"
+                className="btn-atelier-surface"
                 onClick={() => {
                   setDraftGeminiKey('');
                   setDraftHfToken('');
                 }}
               >
-                Clear Keys
+                Clear
               </button>
               <button
                 type="button"
-                className="gold-primary-btn"
+                className="btn-atelier-primary"
                 onClick={saveSettings}
               >
-                Save Engine Preferences
+                Save Configuration
               </button>
             </div>
           </div>
